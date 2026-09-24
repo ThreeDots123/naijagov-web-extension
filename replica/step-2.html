@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Registration — Step 2</title>
+    <!--
+      The second page exists so navigation and re-injection can be tested from
+      day one: ping here after arriving from step 1 and the content script must
+      answer exactly once, with fresh ids.
+
+      It also carries a Pay button and a payment iframe placeholder — two more
+      things the detector must refuse to go past.
+    -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <p class="eyebrow">Example Services Portal</p>
+        <p class="tagline">A fictional service used for testing</p>
+      </div>
+    </header>
+
+    <main>
+      <h1>Register a business name</h1>
+      <p class="lede">Step 2 of 2 — Proprietor and payment</p>
+
+      <form action="./index.html" method="get">
+        <fieldset>
+          <legend>Proprietor</legend>
+
+          <div class="field">
+            <label for="full-name">Full name</label>
+            <input id="full-name" name="full_name" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="id-number">Identification number</label>
+            <input id="id-number" name="id_number" type="text" />
+            <p class="hint">As printed on your identification document.</p>
+          </div>
+
+          <div class="field">
+            <label for="state">State of residence</label>
+            <select id="state" name="state">
+              <option value="">Select one</option>
+              <option value="north">Northern Region</option>
+              <option value="south">Southern Region</option>
+              <option value="east">Eastern Region</option>
+              <option value="west">Western Region</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="document">Upload identification document</label>
+            <input id="document" name="document" type="file" />
+          </div>
+
+          <div class="field checkbox">
+            <input id="declare" name="declare" type="checkbox" required />
+            <label for="declare">I declare the information given is correct</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Payment</legend>
+          <p class="hint">The Copilot stops here too. Nobody automates a payment.</p>
+
+          <div class="payment-frame" role="group" aria-label="Payment">
+            <p>Card details are collected by the payment provider.</p>
+          </div>
+
+          <div class="field">
+            <label for="card-otp">Authorisation code</label>
+            <input id="card-otp" name="card_otp" type="text" autocomplete="one-time-code" />
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <a class="back" href="./index.html">Back to step 1</a>
+          <button type="submit">Pay and submit</button>
+        </div>
+      </form>
+    </main>
+
+    <footer>
+      <p>Example Services Portal — a fictional service. No real application is made here.</p>
+    </footer>
+  </body>
+</html>

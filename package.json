@@ -1,0 +1,33 @@
+{
+  "name": "naijagov-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "NaijaGov Copilot — Chrome side panel that reads a government portal page, explains it, and stops at anything sensitive.",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "replica": "vite preview --outDir replica --port 5174 --strictPort",
+    "zip": "cd dist && zip -r ../naijagov-extension.zip ."
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/chrome": "^0.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.0"
+  }
+}

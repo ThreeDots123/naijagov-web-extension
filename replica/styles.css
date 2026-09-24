@@ -1,0 +1,168 @@
+/*
+  Test-fixture styling. Deliberately plain and deliberately not ours: the point
+  of the replica is to be a page the extension does not control, so it uses its
+  own colours and its own font stack rather than the design tokens.
+*/
+
+:root {
+  --paper: #ffffff;
+  --wash: #eef1f4;
+  --line: #c9d1d9;
+  --text: #1f2933;
+  --muted: #52606d;
+  --accent: #14532d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--wash);
+  color: var(--text);
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.5;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.85);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tagline {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+main {
+  max-width: 720px;
+  margin: 24px auto;
+  padding: 24px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.lede {
+  margin: 4px 0 24px;
+  color: var(--muted);
+}
+
+fieldset {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+}
+
+legend {
+  padding: 0 8px;
+  font-weight: 700;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.field.checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.field.checkbox label {
+  margin: 0;
+  font-weight: 400;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="date"],
+input[type="password"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.payment-frame {
+  padding: 24px;
+  margin-bottom: 16px;
+  text-align: center;
+  color: var(--muted);
+  background: repeating-linear-gradient(
+    45deg,
+    #f7f9fb,
+    #f7f9fb 10px,
+    #eef1f4 10px,
+    #eef1f4 20px
+  );
+  border: 1px dashed var(--line);
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+button {
+  padding: 10px 20px;
+  font: inherit;
+  color: #fff;
+  cursor: pointer;
+  background: var(--accent);
+  border: none;
+}
+
+.back {
+  color: var(--muted);
+}
+
+footer {
+  max-width: 720px;
+  margin: 0 auto 32px;
+  padding: 0 24px;
+  font-size: 13px;
+  color: var(--muted);
+}

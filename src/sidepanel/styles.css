@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/**
+ * Inter Tight, bundled.
+ *
+ * A local woff2, not a Google Fonts request: a remote resource is a review
+ * problem, a privacy problem and an offline problem, and the people using this
+ * are often on expensive mobile data.
+ */
+@font-face {
+  font-family: "Inter Tight";
+  src: url("/fonts/InterTight-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/**
+ * The tokens, once. Same values as naijagov-web, copied rather than imported,
+ * so the panel and the site feel like one product.
+ *
+ * Declared in `@theme` so Tailwind generates utilities from them — `bg-page`,
+ * `text-ink-muted`, `border-rule`. Never hardcode a hex anywhere else.
+ */
+@theme {
+  --color-page: #f4f2ed;
+  --color-surface: #ffffff;
+
+  --color-green-900: #1c4a38;
+  --color-green-700: #2a6149;
+  --color-green-50: #e4efe8;
+
+  --color-ink: #1a1a18;
+  --color-ink-muted: #55554f;
+  --color-ink-faint: #8a8a82;
+  --color-rule: #dcd9d1;
+
+  /* The overlay's four states. These carry meaning, so they are fixed. */
+  --color-state-needs-input: #b45309;
+  --color-state-filled: #15803d;
+  --color-state-checkpoint: #b91c1c;
+  --color-state-explaining: #1d4ed8;
+
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+}
+
+/**
+ * The names CLAUDE.md uses, aliased to the same values. One source of truth,
+ * two vocabularies — the design tokens as written down, and the Tailwind
+ * utilities generated from them.
+ */
+:root {
+  --bg-page: var(--color-page);
+  --bg-surface: var(--color-surface);
+  --ink: var(--color-ink);
+  --ink-muted: var(--color-ink-muted);
+  --ink-faint: var(--color-ink-faint);
+  --rule: var(--color-rule);
+  --state-needs-input: var(--color-state-needs-input);
+  --state-filled: var(--color-state-filled);
+  --state-checkpoint: var(--color-state-checkpoint);
+  --state-explaining: var(--color-state-explaining);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+
+  /* The panel is narrow and resizable. Nothing may scroll sideways, at any width. */
+  overflow-x: hidden;
+}
+
+/* Visible focus everywhere, on the brand colour rather than the platform default. */
+:focus-visible {
+  outline: 2px solid var(--color-green-900);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The pulse on a target field is the only motion in the product, and it stops here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

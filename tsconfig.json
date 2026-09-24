@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+
+    "strict": true,
+    // The serializer and the validator index into the id registry constantly.
+    // A missing id has to be a type error here, not an `undefined` that reaches
+    // the executor and gets written into a form.
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "noFallthroughCasesInSwitch": true,
+    // Makes a switch over a message union genuinely exhaustive: adding a type
+    // without a case is a missing return, which is a build error.
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "isolatedModules": true,
+    // Vite's native config loader wants explicit extensions on the imports in
+    // `vite.config.ts` and `manifest.config.ts`.
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    "types": ["chrome", "vite/client"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "vite.config.ts", "manifest.config.ts"]
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Registration — Step 1</title>
+    <!--
+      A test fixture, not a replica of anything official.
+
+      Generic wording throughout: no real agency name, no emblem, no imitation of
+      a real portal's layout. It exists so the serializer, detector and executor
+      have something stable to work against, and so nobody has to point this
+      extension at a live government service to develop it.
+
+      Deliberately included: one password field and one one-time-code field. The
+      detector needs something to detect and a checkpoint needs somewhere to fire.
+
+      No build step. Plain HTML and CSS.
+    -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <p class="eyebrow">Example Services Portal</p>
+        <p class="tagline">A fictional service used for testing</p>
+      </div>
+    </header>
+
+    <main>
+      <h1>Register a business name</h1>
+      <p class="lede">Step 1 of 2 — About the business</p>
+
+      <form action="./step-2.html" method="get">
+        <fieldset>
+          <legend>Business details</legend>
+
+          <div class="field">
+            <label for="business-name">Proposed business name</label>
+            <input id="business-name" name="business_name" type="text" required />
+            <p class="hint">Give your first choice. You can add alternatives later.</p>
+          </div>
+
+          <div class="field">
+            <label for="nature">Nature of business</label>
+            <select id="nature" name="nature" required>
+              <option value="">Select one</option>
+              <option value="retail">Retail and wholesale trade</option>
+              <option value="agriculture">Agriculture</option>
+              <option value="services">Professional services</option>
+              <option value="transport">Transport and logistics</option>
+              <option value="manufacturing">Manufacturing</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="start-date">Proposed commencement date</label>
+            <input id="start-date" name="start_date" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="address">Business address</label>
+            <textarea id="address" name="address" rows="3"></textarea>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Contact</legend>
+
+          <div class="field">
+            <label for="email">Email address</label>
+            <input id="email" name="email" type="email" required />
+          </div>
+
+          <div class="field">
+            <label for="phone">Phone number</label>
+            <input id="phone" name="phone" type="tel" />
+          </div>
+
+          <div class="field checkbox">
+            <input id="updates" name="updates" type="checkbox" />
+            <label for="updates">Send me updates about this application</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Security</legend>
+          <p class="hint">
+            The Copilot stops here. These two fields exist so it can be proven to stop.
+          </p>
+
+          <div class="field">
+            <label for="password">Create a portal password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" />
+          </div>
+
+          <div class="field">
+            <label for="otp">One-time code sent to your phone</label>
+            <input
+              id="otp"
+              name="otp"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+            />
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit">Continue</button>
+        </div>
+      </form>
+    </main>
+
+    <footer>
+      <p>Example Services Portal — a fictional service. No real application is made here.</p>
+    </footer>
+  </body>
+</html>
