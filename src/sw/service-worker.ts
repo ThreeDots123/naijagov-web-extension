@@ -1,10 +1,21 @@
 import { matchesSupportedHost } from "@/shared/hosts";
-import type { Message, PongMessage, Response } from "@/shared/messages";
-import { assertNever, messageError, notImplemented, sendToTab } from "@/shared/messages";
+import type {
+  DisconnectedMessage,
+  Message,
+  PongMessage,
+  Response,
+} from "@/shared/messages";
+import {
+  assertNever,
+  broadcast,
+  messageError,
+  notImplemented,
+  sendToTab,
+} from "@/shared/messages";
 import type { HealthState } from "@/shared/state";
-import { HEALTH_KEY } from "@/shared/state";
+import { ACCOUNT_KEYS, HEALTH_KEY } from "@/shared/state";
 import { getHealth } from "@/sw/api";
-import { clearSession, setState } from "@/sw/session";
+import { clearAllSessions, clearSession, setState } from "@/sw/session";
 
 /**
  * The service worker: message router, tab bookkeeper, and the only context that
@@ -56,6 +67,9 @@ async function handleMessage(message: Message): Promise<Response<Message> | void
     case "HEALTH_CHECK":
       return { type: "HEALTH_RESULT", health: await checkHealth() };
 
+    case "DISCONNECT":
+      return disconnect();
+
     // Declared, not built. The task that implements each of these replaces the
     // line, not the contract.
     case "SERIALIZE_PAGE":
@@ -69,6 +83,7 @@ async function handleMessage(message: Message): Promise<Response<Message> | void
     case "PONG":
     case "STATE_CHANGED":
     case "HEALTH_RESULT":
+    case "DISCONNECTED":
       throw new Error(`${message.type} is not addressed to the service worker.`);
 
     default:
@@ -93,6 +108,28 @@ async function pingActiveTab(): Promise<PongMessage> {
   } catch {
     throw new Error("Reload the page so the Copilot can attach to it.");
   }
+}
+
+/**
+ * Forget the account.
+ *
+ * Three things go, in an order that matters. The token first, because it is the
+ * credential and the only thing that grants access to anything else. Then the
+ * profile cache. Then every tab's session state, because a pending action can
+ * carry a value derived from the profile and `chrome.storage.session` outlives a
+ * panel being closed.
+ *
+ * `storage.local` is not encrypted, so "the next person opens the panel" is the
+ * case this exists for. Anything that survives here is a leak.
+ */
+async function disconnect(): Promise<DisconnectedMessage> {
+  await chrome.storage.local.remove([...ACCOUNT_KEYS]);
+  await clearAllSessions();
+
+  // The panel derives its state per tab, and every tab's state just went away.
+  await broadcast({ type: "STATE_CHANGED", state: "IDLE" });
+
+  return { type: "DISCONNECTED" };
 }
 
 /**

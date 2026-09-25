@@ -75,6 +75,23 @@ export interface HealthResultMessage {
   health: HealthState;
 }
 
+/**
+ * panel → sw. Forget this account.
+ *
+ * Handled by the worker rather than the panel because the worker owns
+ * `chrome.storage.session`, and a disconnect has to take the per-tab state with
+ * it: a pending action can carry a value derived from the profile, and that must
+ * not survive the account it came from.
+ */
+export interface DisconnectMessage {
+  type: "DISCONNECT";
+}
+
+/** sw → panel. The answer to DISCONNECT. Nothing left to report but success. */
+export interface DisconnectedMessage {
+  type: "DISCONNECTED";
+}
+
 export type Message =
   | PingMessage
   | PongMessage
@@ -85,7 +102,9 @@ export type Message =
   | CheckpointDetectedMessage
   | StateChangedMessage
   | HealthCheckMessage
-  | HealthResultMessage;
+  | HealthResultMessage
+  | DisconnectMessage
+  | DisconnectedMessage;
 
 export type MessageType = Message["type"];
 
@@ -100,6 +119,8 @@ export const MESSAGE_TYPES = [
   "STATE_CHANGED",
   "HEALTH_CHECK",
   "HEALTH_RESULT",
+  "DISCONNECT",
+  "DISCONNECTED",
 ] as const satisfies readonly MessageType[];
 
 type Expect<T extends true> = T;
@@ -120,7 +141,9 @@ export interface ResponseFor {
   SERIALIZE_PAGE: PageSnapshotMessage;
   EXECUTE_ACTIONS: ActionResultsMessage;
   HEALTH_CHECK: HealthResultMessage;
+  DISCONNECT: DisconnectedMessage;
   PONG: void;
+  DISCONNECTED: void;
   PAGE_SNAPSHOT: void;
   ACTION_RESULTS: void;
   CHECKPOINT_DETECTED: void;

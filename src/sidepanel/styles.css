@@ -60,6 +60,20 @@
   --state-filled: var(--color-state-filled);
   --state-checkpoint: var(--color-state-checkpoint);
   --state-explaining: var(--color-state-explaining);
+
+  /**
+   * Status tones.
+   *
+   * `lib/status.ts` decides which tone a state carries; these decide what a tone
+   * looks like. The indirection is the point — the overlay's four state colours
+   * keep their meaning, and the strip borrows them by role rather than picking a
+   * colour of its own.
+   */
+  --tone-neutral: var(--ink-faint);
+  --tone-working: var(--state-needs-input);
+  --tone-ok: var(--state-filled);
+  --tone-info: var(--state-explaining);
+  --tone-stop: var(--state-checkpoint);
 }
 
 html,
@@ -88,6 +102,44 @@ body {
   border-radius: 4px;
 }
 
+/**
+ * The NaijaGov mark.
+ *
+ * Drawn as a mask over `currentColor` rather than inlined as a path, so there is
+ * one copy of the artwork — `public/icons/logo.svg`, the same file the toolbar
+ * PNGs come from — and the panel still colours it from a token. An `<img>` would
+ * not take the colour; a second inlined copy would drift from the first.
+ */
+.n-mark {
+  display: block;
+  flex: none;
+  background-color: currentColor;
+  -webkit-mask: url("/icons/logo.svg") center / contain no-repeat;
+  mask: url("/icons/logo.svg") center / contain no-repeat;
+}
+
+/**
+ * The busy pulse, on the status dot only.
+ *
+ * Opacity, not scale or colour: the dot has to stay the same size and the same
+ * tone, because its colour is the status. Under reduced motion the dot holds at
+ * full opacity and the label takes a trailing ellipsis instead — see
+ * `describeState`.
+ */
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.dot-pulse {
+  animation: dot-pulse 1.6s ease-in-out infinite;
+}
+
 /* The pulse on a target field is the only motion in the product, and it stops here. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -96,5 +148,23 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Belt and braces: no animation at all, and no chance of resting mid-fade. */
+  .dot-pulse {
+    animation: none;
+    opacity: 1;
+  }
+
+  /**
+   * The substitute for the pulse.
+   *
+   * With the dot held still, "working" and "done" would look identical, so the
+   * label takes a trailing ellipsis instead. Done in CSS rather than JS because
+   * generated content lands in the accessible name too — the live region reads
+   * "Reading this page…", which is the distinction, not just a picture of it.
+   */
+  [data-busy="true"]::after {
+    content: "…";
   }
 }

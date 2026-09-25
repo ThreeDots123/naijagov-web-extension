@@ -53,6 +53,8 @@ export interface SessionState {
 
 export const INITIAL_SESSION: SessionState = { state: "IDLE" };
 
+export const SESSION_KEY_PREFIX = "session:";
+
 /**
  * The storage key for a tab's state.
  *
@@ -60,11 +62,34 @@ export const INITIAL_SESSION: SessionState = { state: "IDLE" };
  * service worker writes it.
  */
 export function sessionKey(tabId: number): string {
-  return `session:${tabId}`;
+  return `${SESSION_KEY_PREFIX}${tabId}`;
+}
+
+/**
+ * Is this one of the per-tab session entries?
+ *
+ * A disconnect has to clear every tab's state without knowing which tabs exist,
+ * and `chrome.storage.session` also holds things that are not per-tab — the
+ * health result — which must survive.
+ */
+export function isSessionEntryKey(key: string): boolean {
+  return key.startsWith(SESSION_KEY_PREFIX);
 }
 
 /** Where the worker parks the last backend health result. Not per tab. */
 export const HEALTH_KEY = "health";
+
+/**
+ * What the account owns in `chrome.storage.local`.
+ *
+ * That storage is not encrypted, which is exactly why a disconnect has to be
+ * able to name everything it must remove. Anything added here later is removed
+ * on disconnect for free; anything stored under a key that is *not* here would
+ * quietly outlive the account it belongs to.
+ */
+export const TOKEN_KEY = "token";
+export const PROFILE_KEY = "profile";
+export const ACCOUNT_KEYS = [TOKEN_KEY, PROFILE_KEY] as const;
 
 export interface HealthState {
   reachable: boolean;

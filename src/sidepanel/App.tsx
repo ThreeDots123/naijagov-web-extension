@@ -1,125 +1,119 @@
 import { useState } from "react";
-import { sendToRuntime } from "@/shared/messages";
-import { ConnectPlaceholder } from "@/sidepanel/connect/ConnectPlaceholder";
-import { useActiveTab, useBackendHealth, useCopilotState, useToken } from "@/sidepanel/hooks";
+import { Composer } from "@/sidepanel/components/composer";
+import { ConnectCard } from "@/sidepanel/components/connect-card";
+import type { ScenarioKey } from "@/sidepanel/components/dev/state-switcher";
+import {
+  SCENARIOS,
+  StateSwitcher,
+} from "@/sidepanel/components/dev/state-switcher";
+import { GreetingBubble } from "@/sidepanel/components/greeting-bubble";
+import { PanelHeader } from "@/sidepanel/components/panel-header";
+import { QuickPrompts } from "@/sidepanel/components/quick-prompts";
+import { StatusStrip } from "@/sidepanel/components/status-strip";
+import { useBackendHealth } from "@/sidepanel/hooks/use-backend-health";
+import { useConnectionCheck } from "@/sidepanel/hooks/use-connection-check";
+import { useCopilotState } from "@/sidepanel/hooks/use-copilot-state";
+import {
+  disconnect,
+  openProfile,
+  storeToken,
+  useToken,
+} from "@/sidepanel/hooks/use-token";
+import { describeState, NOT_CONNECTED } from "@/sidepanel/lib/status";
 
 /**
- * The panel shell.
+ * The panel.
  *
- * For this task the body is a readout: what state the Copilot is in, what tab it
- * is looking at, whether the content script answers, and whether the backend is
- * up. Everything that will eventually live here — chat, the fill preview, the
- * checkpoint banner — hangs off the same three pieces of plumbing.
+ * The only stateful component: everything below it takes props and renders. All
+ * four hooks live here, which is what keeps `chrome.*` out of the components and
+ * makes each of them something you can look at in isolation.
+ *
+ * Nothing here talks to the AI. The quick prompts and the composer fill the
+ * field and call a handler that does nothing yet — the transcript is its own task.
  */
-
-type PingResult =
-  | { status: "idle" }
-  | { status: "pending" }
-  | { status: "ok"; url: string; elementCount: number }
-  | { status: "error"; message: string };
 
 export function App() {
   const token = useToken();
-  const tab = useActiveTab();
-  const state = useCopilotState(tab?.id);
-  const { health, refresh } = useBackendHealth();
-  const [ping, setPing] = useState<PingResult>({ status: "idle" });
+  const live = useCopilotState();
+  const { status: backend, check: checkBackend } = useBackendHealth();
+  const connectionCheck = useConnectionCheck(checkBackend);
 
-  async function onPing() {
-    setPing({ status: "pending" });
-    refresh();
+  const [draft, setDraft] = useState("");
 
-    try {
-      const pong = await sendToRuntime({ type: "PING" });
-      setPing({ status: "ok", url: pong.url, elementCount: pong.elementCount });
-    } catch (error) {
-      setPing({
-        status: "error",
-        message: error instanceof Error ? error.message : "The page didn't answer.",
-      });
-    }
+  // Development only. `SCENARIOS.live` is the real thing, and the production
+  // build drops this along with the switcher itself.
+  const [scenario, setScenario] = useState<ScenarioKey>("live");
+  const override =
+    import.meta.env.DEV && scenario !== "live"
+      ? SCENARIOS[scenario]
+      : undefined;
+
+  const connected = override
+    ? override.connected
+    : token.status === "ready" && token.value !== undefined;
+  const state = override?.state ?? live.state;
+  const supported = override?.supported ?? live.supported;
+
+  const status = connected ? describeState(state, supported) : NOT_CONNECTED;
+  const stopped = state === "CHECKPOINT";
+
+  function submit() {
+    // Wired in the chat task. Left deliberately inert rather than stubbed with a
+    // fake reply, so nothing in the panel can look like it works before it does.
+  }
+
+  function pickPrompt(prompt: string) {
+    setDraft(prompt);
+    submit();
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-page text-ink">
-      <Header />
+    <div className="flex h-dvh flex-col bg-page text-ink">
+      <PanelHeader />
 
-      <main className="flex-1 space-y-3 px-4 py-4">
-        {token.status === "ready" && token.value === undefined ? <ConnectPlaceholder /> : null}
+      <StatusStrip
+        status={status}
+        rawState={state}
+        url={override ? undefined : live.url}
+        backend={backend}
+        check={connectionCheck}
+        // Hidden without a token, and inert under a dev scenario — the switcher
+        // fakes what the panel displays and must not be able to wipe a real one.
+        onDisconnect={connected && !override ? disconnect : undefined}
+      />
 
-        <Row label="Status" value={state} />
-        <Row label="Page" value={tab?.url ?? "No tab"} wrap />
-        <Row label="Backend" value={describeHealth(health)} />
+      <main className="min-h-0 flex-1 overflow-y-auto p-4">
 
-        <section className="rounded-lg border border-rule bg-surface p-4">
-          <button
-            type="button"
-            onClick={() => void onPing()}
-            disabled={ping.status === "pending"}
-            className="w-full rounded-md bg-green-900 px-3 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            {ping.status === "pending" ? "Pinging…" : "Ping page"}
-          </button>
-
-          <p className="mt-3 wrap-break-word text-ink-muted" aria-live="polite">
-            {describePing(ping)}
-          </p>
-        </section>
+        {token.status === "loading" && !override ? null : connected ? (
+          <>
+            <GreetingBubble supported={supported} />
+            <QuickPrompts disabled={stopped} onPick={pickPrompt} />
+          </>
+        ) : (
+          <ConnectCard
+            onOpenProfile={openProfile}
+            onConnect={(value) => void storeToken(value)}
+          />
+        )}
       </main>
 
-      <Footer />
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSubmit={submit}
+        disabled={!connected}
+        placeholder={
+          connected ? "Type your message…" : "Connect your account to start"
+        }
+      />
+
+      {import.meta.env.DEV ? (
+        <StateSwitcher value={scenario} onChange={setScenario} />
+      ) : null}
+
+      <footer className="flex h-7 flex-none items-center justify-center px-4 text-[11px] text-ink-faint">
+        Not affiliated with any government agency.
+      </footer>
     </div>
   );
-}
-
-function Header() {
-  return (
-    <header className="flex items-center gap-2 border-b border-rule bg-surface px-4 py-3">
-      {/* The same mark as the toolbar icon, generated from public/icons/logo.svg. */}
-      <img src="/icons/icon-48.png" alt="" width={24} height={24} className="size-6 shrink-0" />
-      <h1 className="truncate text-base font-semibold text-ink">NaijaGov Copilot</h1>
-    </header>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="border-t border-rule px-4 py-3 text-ink-faint">
-      Not affiliated with any government agency.
-    </footer>
-  );
-}
-
-interface RowProps {
-  label: string;
-  value: string;
-  /** Long values — a URL — wrap instead of pushing the panel sideways. */
-  wrap?: boolean;
-}
-
-function Row({ label, value, wrap = false }: RowProps) {
-  return (
-    <div className="rounded-lg border border-rule bg-surface px-4 py-3">
-      <div className="text-ink-faint">{label}</div>
-      <div className={`mt-0.5 font-medium text-ink ${wrap ? "break-all" : "truncate"}`}>{value}</div>
-    </div>
-  );
-}
-
-function describeHealth(health: { reachable: boolean } | undefined): string {
-  if (!health) return "Checking…";
-  return health.reachable ? "Online" : "Offline";
-}
-
-function describePing(ping: PingResult): string {
-  switch (ping.status) {
-    case "idle":
-      return "Ping the page to check the Copilot can reach it.";
-    case "pending":
-      return "Waiting for the page…";
-    case "ok":
-      return `${ping.url} — ${ping.elementCount.toLocaleString()} elements`;
-    case "error":
-      return ping.message;
-  }
 }

@@ -1,3 +1,5 @@
+import { TOKEN_KEY } from "@/shared/state";
+
 /**
  * The backend client, and the only file in this repo that calls `fetch`.
  *
@@ -43,7 +45,8 @@ export class ApiError extends Error {
  * cache and nothing more sensitive than that, and the connect screen says so.
  */
 async function getToken(): Promise<string | undefined> {
-  const { token } = await chrome.storage.local.get("token");
+  const stored = await chrome.storage.local.get(TOKEN_KEY);
+  const token = stored[TOKEN_KEY];
   return typeof token === "string" && token.length > 0 ? token : undefined;
 }
 
