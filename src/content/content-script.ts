@@ -1,6 +1,7 @@
 import type { Message, MessageType, Response } from "@/shared/messages";
 import { isMessage, messageError, notImplemented } from "@/shared/messages";
 import { mountOverlay } from "@/content/overlay";
+import { readPage, startObserving } from "@/content/observer";
 
 /**
  * The content script: the only code in this extension that touches a page.
@@ -45,6 +46,7 @@ function isForUs(value: unknown): value is HandledMessage {
 
 function init(): void {
   mountOverlay();
+  startObserving();
 
   chrome.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
     if (!isForUs(raw)) return false;
@@ -69,9 +71,14 @@ async function handleMessage(message: HandledMessage): Promise<Response<HandledM
         elementCount: document.getElementsByTagName("*").length,
       };
 
-    // Declared, not built. The serializer and executor tasks fill these in
-    // against the shape that already exists.
     case "SERIALIZE_PAGE":
+      // The worker receives the snapshot as the answer to its own question, so
+      // the observer must not also push a copy of it. `readPage` records the
+      // hash it produced, which is what keeps the next mutation quiet.
+      return { type: "PAGE_SNAPSHOT", snapshot: readPage().snapshot };
+
+    // Declared, not built. The executor task fills this in against the shape
+    // that already exists.
     case "EXECUTE_ACTIONS":
       return notImplemented(message.type);
   }

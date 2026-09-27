@@ -38,6 +38,16 @@ export class ApiError extends Error {
 }
 
 /**
+ * Is this install connected to an account?
+ *
+ * Asked by the worker before it acts on anything it reads from a page: an
+ * unconnected install has nothing to plan with and stays `IDLE`.
+ */
+export async function hasToken(): Promise<boolean> {
+  return (await getToken()) !== undefined;
+}
+
+/**
  * The extension token, created by the user on the web app and pasted into the
  * connect screen.
  *

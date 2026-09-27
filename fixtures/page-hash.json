@@ -1,0 +1,308 @@
+{
+  "$comment": "Generated from src/shared/page-hash.ts. The algorithm is specified in docs/page-hash.md. naijagov-api must reproduce every `canonical` and `hash` below from the same `input`. Regenerate only together with a version bump.",
+  "version": "v1",
+  "separators": {
+    "field": "U+001F",
+    "option": "U+001E",
+    "record": "U+000A"
+  },
+  "cases": [
+    {
+      "name": "empty page",
+      "note": "No fields at all. Proves the header lines are always present.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": []
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply",
+      "hash": "7a81658c01efbc05"
+    },
+    {
+      "name": "replica step 1",
+      "note": "The nine fields of the local test fixture, in document order.",
+      "input": {
+        "url": "http://localhost:5174/index.html",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Proposed business name",
+            "required": true
+          },
+          {
+            "type": "select",
+            "label": "Nature of business",
+            "required": true,
+            "options": [
+              {
+                "label": "Select one",
+                "value": "select-one"
+              },
+              {
+                "label": "Retail and wholesale trade",
+                "value": "retail-and-wholesale-trade"
+              },
+              {
+                "label": "Agriculture",
+                "value": "agriculture"
+              },
+              {
+                "label": "Professional services",
+                "value": "professional-services"
+              },
+              {
+                "label": "Transport and logistics",
+                "value": "transport-and-logistics"
+              },
+              {
+                "label": "Manufacturing",
+                "value": "manufacturing"
+              }
+            ]
+          },
+          {
+            "type": "date",
+            "label": "Proposed commencement date",
+            "required": false
+          },
+          {
+            "type": "textarea",
+            "label": "Business address",
+            "required": false
+          },
+          {
+            "type": "email",
+            "label": "Email address",
+            "required": true
+          },
+          {
+            "type": "tel",
+            "label": "Phone number",
+            "required": false
+          },
+          {
+            "type": "checkbox",
+            "label": "Send me updates about this application",
+            "required": false
+          },
+          {
+            "type": "password",
+            "label": "Create a portal password",
+            "required": false
+          },
+          {
+            "type": "text",
+            "label": "One-time code sent to your phone",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttp://localhost:5174/index.html\ntext\u001fproposed business name\u001f1\u001f\nselect\u001fnature of business\u001f1\u001fselect one\u001eretail and wholesale trade\u001eagriculture\u001eprofessional services\u001etransport and logistics\u001emanufacturing\ndate\u001fproposed commencement date\u001f0\u001f\ntextarea\u001fbusiness address\u001f0\u001f\nemail\u001femail address\u001f1\u001f\ntel\u001fphone number\u001f0\u001f\ncheckbox\u001fsend me updates about this application\u001f0\u001f\npassword\u001fcreate a portal password\u001f0\u001f\ntext\u001fone-time code sent to your phone\u001f0\u001f",
+      "hash": "c7bb544ca5127963"
+    },
+    {
+      "name": "required marker in the label",
+      "note": "All three spellings must hash identically to the plain label.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "email",
+            "label": "Email address *",
+            "required": false
+          },
+          {
+            "type": "email",
+            "label": "Email address (required)",
+            "required": false
+          },
+          {
+            "type": "email",
+            "label": "Email address   (REQUIRED)",
+            "required": false
+          },
+          {
+            "type": "email",
+            "label": "Email address **",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\nemail\u001femail address\u001f0\u001f\nemail\u001femail address\u001f0\u001f\nemail\u001femail address\u001f0\u001f\nemail\u001femail address\u001f0\u001f",
+      "hash": "cbb57b7644e31891"
+    },
+    {
+      "name": "whitespace and unicode",
+      "note": "Non-breaking space, tab, newline and a full-width character all fold.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Nature of\tbusiness",
+            "required": false
+          },
+          {
+            "type": "text",
+            "label": "Nature\n  of   business",
+            "required": false
+          },
+          {
+            "type": "text",
+            "label": "Ｎature of business",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\ntext\u001fnature of business\u001f0\u001f\ntext\u001fnature of business\u001f0\u001f\ntext\u001fnature of business\u001f0\u001f",
+      "hash": "53defe07da2f5243"
+    },
+    {
+      "name": "query string is excluded",
+      "note": "A GET form puts typed values in the URL. This must hash as the bare path.",
+      "input": {
+        "url": "http://localhost:5174/step-2.html?business_name=Ada+Stores&email=ada%40example.test",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Full name",
+            "required": true
+          }
+        ]
+      },
+      "canonical": "v1\nhttp://localhost:5174/step-2.html\ntext\u001ffull name\u001f1\u001f",
+      "hash": "7c89a380a947ea22"
+    },
+    {
+      "name": "trailing slash is excluded",
+      "note": "Same page whether the portal links to /apply or /apply/.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply/",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Full name",
+            "required": true
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\ntext\u001ffull name\u001f1\u001f",
+      "hash": "86b487427ebc7112"
+    },
+    {
+      "name": "field order matters",
+      "note": "Same two questions, swapped. The hash must differ from the case below.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Surname",
+            "required": false
+          },
+          {
+            "type": "text",
+            "label": "First name",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\ntext\u001fsurname\u001f0\u001f\ntext\u001ffirst name\u001f0\u001f",
+      "hash": "997d0329b799b471"
+    },
+    {
+      "name": "field order matters, reversed",
+      "note": "The pair for the case above.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "text",
+            "label": "First name",
+            "required": false
+          },
+          {
+            "type": "text",
+            "label": "Surname",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\ntext\u001ffirst name\u001f0\u001f\ntext\u001fsurname\u001f0\u001f",
+      "hash": "2939573781e00ecb"
+    },
+    {
+      "name": "required changes the hash",
+      "note": "Same label and type, different requiredness.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "email",
+            "label": "Email address",
+            "required": true
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\nemail\u001femail address\u001f1\u001f",
+      "hash": "713b4b6b4e295989"
+    },
+    {
+      "name": "radio group with options",
+      "note": "A group is one field whose options are the radios' own labels.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "radio",
+            "label": "Preferred contact method",
+            "required": true,
+            "options": [
+              {
+                "label": "By email",
+                "value": "by-email"
+              },
+              {
+                "label": "By text message",
+                "value": "by-text-message"
+              }
+            ]
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\nradio\u001fpreferred contact method\u001f1\u001fby email\u001eby text message",
+      "hash": "30e6ab1c543ba7e0"
+    },
+    {
+      "name": "unlabelled field",
+      "note": "An empty label is a legitimate value and must hash, not throw.",
+      "input": {
+        "url": "https://portal.example.gov.ng/apply",
+        "fields": [
+          {
+            "type": "text",
+            "label": "",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nhttps://portal.example.gov.ng/apply\ntext\u001f\u001f0\u001f",
+      "hash": "d76ec5d0c5b71db1"
+    },
+    {
+      "name": "unparseable url",
+      "note": "Used trimmed, as-is. Both sides must agree even on nonsense.",
+      "input": {
+        "url": "  not a url  ",
+        "fields": [
+          {
+            "type": "text",
+            "label": "Full name",
+            "required": false
+          }
+        ]
+      },
+      "canonical": "v1\nnot a url\ntext\u001ffull name\u001f0\u001f",
+      "hash": "d45729768e23b847"
+    }
+  ]
+}
