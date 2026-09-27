@@ -15,7 +15,14 @@ import {
 import type { HealthState } from "@/shared/state";
 import { ACCOUNT_KEYS, HEALTH_KEY } from "@/shared/state";
 import { getHealth } from "@/sw/api";
-import { clearAllSessions, clearSession, setState } from "@/sw/session";
+import {
+  activeSupportedTab,
+  beginReading,
+  raiseCheckpoint,
+  readActiveTab,
+  receiveSnapshot,
+} from "@/sw/page";
+import { clearAllSessions, clearSession } from "@/sw/session";
 
 /**
  * The service worker: message router, tab bookkeeper, and the only context that
@@ -33,10 +40,10 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   const message = raw as Message;
 
-  handleMessage(message).then(sendResponse, (error: unknown) => {
+  handleMessage(message, sender).then(sendResponse, (error: unknown) => {
     sendResponse(messageError(error));
   });
 
@@ -45,24 +52,40 @@ chrome.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
 });
 
 /**
- * A supported page finished loading, so whatever we knew about it is stale.
- * Back to READING — the next read re-stamps ids, which is what stops an action
- * from addressing an element that no longer exists.
+ * A supported page finished loading, so whatever we knew about it is stale. The
+ * next read re-stamps ids, which is what stops an action from addressing an
+ * element that no longer exists.
  */
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete") return;
   if (!matchesSupportedHost(tab.url)) return;
-  void setState(tabId, "READING");
+  void beginReading(tabId);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearSession(tabId);
 });
 
-async function handleMessage(message: Message): Promise<Response<Message> | void> {
+async function handleMessage(
+  message: Message,
+  sender: chrome.runtime.MessageSender,
+): Promise<Response<Message> | void> {
   switch (message.type) {
     case "PING":
       return pingActiveTab();
+
+    case "SERIALIZE_PAGE":
+      return readActiveTab();
+
+    case "PAGE_SNAPSHOT":
+      return receiveSnapshot(message.snapshot, tabIdOf(sender, message.type));
+
+    case "CHECKPOINT_DETECTED":
+      return raiseCheckpoint(
+        tabIdOf(sender, message.type),
+        message.reason,
+        message.fieldId,
+      );
 
     case "HEALTH_CHECK":
       return { type: "HEALTH_RESULT", health: await checkHealth() };
@@ -70,13 +93,10 @@ async function handleMessage(message: Message): Promise<Response<Message> | void
     case "DISCONNECT":
       return disconnect();
 
-    // Declared, not built. The task that implements each of these replaces the
-    // line, not the contract.
-    case "SERIALIZE_PAGE":
+    // Declared, not built. The executor task replaces these two lines, not the
+    // contract.
     case "EXECUTE_ACTIONS":
-    case "PAGE_SNAPSHOT":
     case "ACTION_RESULTS":
-    case "CHECKPOINT_DETECTED":
       return notImplemented(message.type);
 
     // Answers and broadcasts. They travel to the panel; they never arrive here.
@@ -91,17 +111,21 @@ async function handleMessage(message: Message): Promise<Response<Message> | void
   }
 }
 
+/**
+ * Which tab a message came from.
+ *
+ * A snapshot or a checkpoint is only meaningful about the page that produced it,
+ * and a message that arrives without a tab did not come from a content script.
+ */
+function tabIdOf(sender: chrome.runtime.MessageSender, type: string): number {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) throw new Error(`${type} arrived without a tab.`);
+  return tabId;
+}
+
 /** panel → sw → content → back again. The proof that the pipe is connected. */
 async function pingActiveTab(): Promise<PongMessage> {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-
-  if (!tab?.id) {
-    throw new Error("No active tab to read.");
-  }
-
-  if (!matchesSupportedHost(tab.url)) {
-    throw new Error("The Copilot doesn't work on this page.");
-  }
+  const tab = await activeSupportedTab();
 
   try {
     return await sendToTab(tab.id, { type: "PING" });

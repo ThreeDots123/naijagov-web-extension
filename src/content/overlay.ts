@@ -1,3 +1,6 @@
+import type { FieldId } from "@/shared/actions";
+import { lookup } from "@/content/registry";
+
 /**
  * The overlay: highlight boxes drawn over the portal's own page.
  *
@@ -121,6 +124,25 @@ export function highlight(element: Element, state: HighlightState = "needs-input
   return box;
 }
 
+/**
+ * Draw a box over a field by its id.
+ *
+ * The id goes through the registry, which is the only way anything in this
+ * extension reaches an element — including the overlay. An id from an earlier
+ * generation resolves to nothing and returns `false`, rather than highlighting
+ * whatever happens to sit in that position on the page now.
+ */
+export function highlightField(
+  fieldId: FieldId,
+  state: HighlightState = "needs-input",
+): boolean {
+  const element = lookup(fieldId);
+  if (!element) return false;
+
+  highlight(element, state);
+  return true;
+}
+
 export function clearHighlights(): void {
   for (const { box } of boxes) box.remove();
   boxes = [];
@@ -173,9 +195,18 @@ function schedule(): void {
   if (frame !== undefined) return;
   frame = requestAnimationFrame(() => {
     frame = undefined;
-    for (const { element, box } of boxes) {
-      if (element.isConnected) position(element, box);
-      else box.style.display = "none";
+    // A box whose element has left the page is dropped, not hidden. The element
+    // is gone from the registry too, so there is nothing left for it to be about.
+    const surviving: typeof boxes = [];
+    for (const entry of boxes) {
+      if (entry.element.isConnected) {
+        position(entry.element, entry.box);
+        surviving.push(entry);
+      } else {
+        entry.box.remove();
+      }
     }
+    boxes = surviving;
+    if (boxes.length === 0) stopTracking();
   });
 }

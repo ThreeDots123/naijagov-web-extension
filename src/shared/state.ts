@@ -46,6 +46,13 @@ export interface SessionState {
   pageHash?: string;
   workflowId?: string;
   stepId?: string;
+  /**
+   * Why the page is paused, when it is.
+   *
+   * Stored rather than only broadcast, because a panel opened *after* the
+   * detector fired would otherwise show a checkpoint it cannot explain.
+   */
+  checkpointReason?: string;
   /** Planned but unconfirmed. Cleared, never kept, when a checkpoint fires. */
   pendingActions?: Action[];
   lastResults?: ActionResult[];
