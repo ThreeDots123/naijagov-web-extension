@@ -22,6 +22,13 @@ export interface CopilotStateView {
   supported: boolean;
   /** The active tab's URL, for the expanded detail. Undefined before the first read. */
   url: string | undefined;
+  /**
+   * Which tab this describes.
+   *
+   * Exposed because the transcript is stored per tab and the panel has to know which
+   * key to read. Undefined before the first query, and while no tab is active.
+   */
+  tabId: number | undefined;
 }
 
 export function useCopilotState(): CopilotStateView {
@@ -93,5 +100,6 @@ export function useCopilotState(): CopilotStateView {
     state: tabId === undefined ? "IDLE" : state,
     supported: matchesSupportedHost(url),
     url,
+    tabId,
   };
 }

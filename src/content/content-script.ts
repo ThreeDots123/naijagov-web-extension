@@ -1,6 +1,7 @@
 import type { Message, MessageType, Response } from "@/shared/messages";
 import { isMessage, messageError, notImplemented } from "@/shared/messages";
-import { mountOverlay } from "@/content/overlay";
+import { ROW_HIGHLIGHT } from "@/shared/overlay";
+import { clearHighlights, highlightField, mountOverlay } from "@/content/overlay";
 import { readPage, startObserving } from "@/content/observer";
 
 /**
@@ -36,7 +37,13 @@ if (!window.__naijagov) {
  * is ignored without a reply, so a `STATE_CHANGED` going out to every context
  * passes over the page instead of landing here as an error.
  */
-const HANDLED = ["PING", "SERIALIZE_PAGE", "EXECUTE_ACTIONS"] as const satisfies readonly MessageType[];
+const HANDLED = [
+  "PING",
+  "SERIALIZE_PAGE",
+  "EXECUTE_ACTIONS",
+  "PAGE_HASH_CHECK",
+  "FIELD_HIGHLIGHT",
+] as const satisfies readonly MessageType[];
 
 type HandledMessage = Extract<Message, { type: (typeof HANDLED)[number] }>;
 
@@ -76,6 +83,34 @@ async function handleMessage(message: HandledMessage): Promise<Response<HandledM
       // the observer must not also push a copy of it. `readPage` records the
       // hash it produced, which is what keeps the next mutation quiet.
       return { type: "PAGE_SNAPSHOT", snapshot: readPage().snapshot };
+
+    case "PAGE_HASH_CHECK": {
+      // A full read, because the hash is a function of the whole structure and there
+      // is no cheaper honest way to compute it. `readPage` also refreshes the registry,
+      // which is what an approval about to address these ids needs.
+      const { snapshot } = readPage();
+
+      return {
+        type: "PAGE_HASH",
+        pageHash: snapshot.pageHash,
+        generation: snapshot.generation,
+      };
+    }
+
+    case "FIELD_HIGHLIGHT": {
+      // No field means "stop pointing". Clearing everything rather than one box is
+      // deliberate: the panel only ever points at one row at a time, and a clear that
+      // had to name the right box could leave one behind.
+      if (!message.fieldId) {
+        clearHighlights();
+
+        return { type: "FIELD_HIGHLIGHTED", drawn: false };
+      }
+
+      const drawn = highlightField(message.fieldId, message.state ?? ROW_HIGHLIGHT);
+
+      return { type: "FIELD_HIGHLIGHTED", drawn };
+    }
 
     // Declared, not built. The executor task fills this in against the shape
     // that already exists.

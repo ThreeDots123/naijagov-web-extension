@@ -1,4 +1,5 @@
 import type { FieldId } from "@/shared/actions";
+import type { HighlightState } from "@/shared/overlay";
 import { lookup } from "@/content/registry";
 
 /**
@@ -15,8 +16,13 @@ import { lookup } from "@/content/registry";
  * was injected into, and a closed shadow root has to be held somewhere.
  */
 
-/** The four overlay states. They carry meaning, so they are fixed. */
-export type HighlightState = "needs-input" | "filled" | "checkpoint" | "explaining";
+/**
+ * Re-exported so the modules that draw boxes keep importing the vocabulary from
+ * the module that owns the drawing. It is declared in `shared/overlay.ts` because
+ * the panel names a state too — a hovered preview row asks the page to point at
+ * its field.
+ */
+export type { HighlightState };
 
 const HOST_ID = "naijagov-copilot-overlay";
 

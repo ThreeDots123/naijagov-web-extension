@@ -1,8 +1,13 @@
 import { matchesSupportedHost } from "@/shared/hosts";
-import type { CheckpointDetectedMessage, PageSnapshotMessage } from "@/shared/messages";
+import type {
+  CheckpointDetectedMessage,
+  PageHashMessage,
+  PageSnapshotMessage,
+} from "@/shared/messages";
 import { broadcast, sendToTab } from "@/shared/messages";
 import type { PageSnapshot } from "@/shared/page";
 import { hasToken } from "@/sw/api";
+import { stalePendingPreviews } from "@/sw/chat";
 import { getSession, setSession, setState } from "@/sw/session";
 
 /**
@@ -103,7 +108,16 @@ export async function raiseCheckpoint(
   reason: string,
   fieldId?: string,
 ): Promise<void> {
-  await setSession(tabId, { checkpointReason: reason, pendingActions: [] });
+  await setSession(tabId, {
+    checkpointReason: reason,
+    pendingActions: [],
+    pendingPlan: undefined,
+  });
+
+  // A preview left showing live controls after a checkpoint would be offering to fill
+  // a page the detector has just refused.
+  await stalePendingPreviews(tabId);
+
   await setState(tabId, "CHECKPOINT");
 
   const message: CheckpointDetectedMessage = fieldId
@@ -111,4 +125,43 @@ export async function raiseCheckpoint(
     : { type: "CHECKPOINT_DETECTED", reason };
 
   await broadcast(message);
+}
+
+/**
+ * A fresh read of a tab, without moving the state machine.
+ *
+ * `readActiveTab` exists for the panel asking "what is on this page?", and it goes
+ * through `READING` → `READY` because that is the honest answer to that question.
+ * Planning needs the same snapshot without the detour: the tab is already at
+ * `PLANNING`, and flickering it through `READING` and back would make the strip
+ * announce a re-read that the user did not ask for.
+ *
+ * The snapshot is still recorded, because it is the newest thing we know about the
+ * page and the hash it carries is what a later approval is checked against.
+ */
+export async function fetchSnapshot(tabId: number): Promise<PageSnapshot> {
+  let reply: PageSnapshotMessage;
+  try {
+    reply = await sendToTab(tabId, { type: "SERIALIZE_PAGE" });
+  } catch {
+    throw new Error("Reload the page so the Copilot can attach to it.");
+  }
+
+  await setSession(tabId, { pageHash: reply.snapshot.pageHash });
+
+  return reply.snapshot;
+}
+
+/**
+ * The page's structural hash, right now.
+ *
+ * Asked at approval. Cheaper than a whole snapshot and it answers the only question
+ * approval has: is this still the page the plan was built against?
+ */
+export async function fetchPageHash(tabId: number): Promise<PageHashMessage> {
+  try {
+    return await sendToTab(tabId, { type: "PAGE_HASH_CHECK" });
+  } catch {
+    throw new Error("Reload the page so the Copilot can attach to it.");
+  }
 }

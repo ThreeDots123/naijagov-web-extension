@@ -1,4 +1,5 @@
 import type { Action, ActionResult, FieldId } from "@/shared/actions";
+import type { HighlightState } from "@/shared/overlay";
 import type { PageSnapshot } from "@/shared/page";
 import type { CopilotState, HealthState } from "@/shared/state";
 
@@ -6,9 +7,9 @@ import type { CopilotState, HealthState } from "@/shared/state";
  * Every message that crosses between the side panel, the service worker and the
  * content script. One discriminated union, one send helper, no ad-hoc objects.
  *
- * In this task only PING/PONG, HEALTH_CHECK/HEALTH_RESULT and STATE_CHANGED
- * have bodies. The rest are declared and answered with `notImplemented`, so the
- * task that builds them adds a function body rather than inventing a contract.
+ * EXECUTE_ACTIONS and ACTION_RESULTS are still declared and answered with
+ * `notImplemented`: the executor is the next fragment, and its contract already
+ * exists here so that task adds a function body rather than inventing one.
  */
 
 /** panel → sw → content. "Is anyone home on this page?" */
@@ -92,6 +93,125 @@ export interface DisconnectedMessage {
   type: "DISCONNECTED";
 }
 
+/**
+ * panel → sw. Plan a turn for this page and this message.
+ *
+ * Answered only when the turn is finished, which can be twenty seconds: a pending
+ * response is what keeps the service worker alive across the model call. The
+ * outcome is *also* written to the tab's transcript before this resolves, so a
+ * panel that was closed mid-turn finds the answer waiting rather than losing it.
+ */
+export interface PlanRequestMessage {
+  type: "PLAN_REQUEST";
+  message: string;
+}
+
+/**
+ * sw → panel. The turn is over — read the transcript.
+ *
+ * Deliberately carries no plan. There is one source of truth for what was said,
+ * and it is `chrome.storage.session`; a copy travelling back here could disagree
+ * with it, and the panel would have no way to know which was newer.
+ */
+export interface PlanReadyMessage {
+  type: "PLAN_READY";
+}
+
+/**
+ * One row as the user left it.
+ *
+ * `value` is present only when they corrected it. A corrected value is the user's
+ * own — it dispatches with a `ValueSource` of `{ kind: "user" }`, whatever the
+ * backend originally sourced it from — which is what keeps the rule that no value
+ * is filled unless it traces to the profile or to something the user typed.
+ */
+export interface ApprovedRow {
+  actionId: string;
+  value?: string;
+}
+
+/**
+ * panel → sw. The user pressed `Fill selected` on this turn's preview.
+ *
+ * The chosen rows travel with the approval rather than being read back from
+ * storage. The card on screen is the thing the user agreed to, so it is the thing
+ * that is sent; a stored selection would be a second source of truth about a
+ * decision that has already been made.
+ */
+export interface PlanApproveMessage {
+  type: "PLAN_APPROVE";
+  turnId: string;
+  rows: ApprovedRow[];
+}
+
+/**
+ * sw → panel. What approval did.
+ *
+ * `stale` means the page hash moved while the preview was open: the plan was
+ * discarded and the page re-read, and nothing was dispatched. The user is asked to
+ * send their message again rather than being silently re-planned — they may want
+ * to say something different now.
+ */
+export interface PlanApprovedMessage {
+  type: "PLAN_APPROVED";
+  outcome: "dispatched" | "stale";
+  /** How many actions were handed off. Zero on `stale`. */
+  dispatched: number;
+}
+
+/** panel → sw. The user pressed `Cancel`. Nothing has touched the page. */
+export interface PlanCancelMessage {
+  type: "PLAN_CANCEL";
+  turnId: string;
+}
+
+export interface PlanCancelledMessage {
+  type: "PLAN_CANCELLED";
+}
+
+/**
+ * panel → sw → content. Point at a field on the page, or stop pointing.
+ *
+ * One message for both directions of a hover: with a `fieldId` it draws, without
+ * one it clears. Two messages would be two chances for a stray clear to arrive
+ * after the next draw.
+ */
+export interface FieldHighlightMessage {
+  type: "FIELD_HIGHLIGHT";
+  /** Absent means "clear everything". */
+  fieldId?: FieldId;
+  state?: HighlightState;
+}
+
+/**
+ * content → panel. Whether a box was actually drawn.
+ *
+ * False for a clear, and false for an id from an earlier generation — a stale id
+ * resolves to nothing rather than highlighting whatever now sits in that position.
+ */
+export interface FieldHighlightedMessage {
+  type: "FIELD_HIGHLIGHTED";
+  drawn: boolean;
+}
+
+/**
+ * sw → content. What is this page's structural hash right now?
+ *
+ * Asked at approval, not at planning. Cheaper than a full snapshot round trip and
+ * it answers the only question approval has: is this still the page the plan was
+ * built against?
+ */
+export interface PageHashCheckMessage {
+  type: "PAGE_HASH_CHECK";
+}
+
+/** content → sw. The hash as of this instant, and the read that produced it. */
+export interface PageHashMessage {
+  type: "PAGE_HASH";
+  pageHash: string;
+  generation: number;
+}
+
 export type Message =
   | PingMessage
   | PongMessage
@@ -104,7 +224,17 @@ export type Message =
   | HealthCheckMessage
   | HealthResultMessage
   | DisconnectMessage
-  | DisconnectedMessage;
+  | DisconnectedMessage
+  | PlanRequestMessage
+  | PlanReadyMessage
+  | PlanApproveMessage
+  | PlanApprovedMessage
+  | PlanCancelMessage
+  | PlanCancelledMessage
+  | FieldHighlightMessage
+  | FieldHighlightedMessage
+  | PageHashCheckMessage
+  | PageHashMessage;
 
 export type MessageType = Message["type"];
 
@@ -121,6 +251,16 @@ export const MESSAGE_TYPES = [
   "HEALTH_RESULT",
   "DISCONNECT",
   "DISCONNECTED",
+  "PLAN_REQUEST",
+  "PLAN_READY",
+  "PLAN_APPROVE",
+  "PLAN_APPROVED",
+  "PLAN_CANCEL",
+  "PLAN_CANCELLED",
+  "FIELD_HIGHLIGHT",
+  "FIELD_HIGHLIGHTED",
+  "PAGE_HASH_CHECK",
+  "PAGE_HASH",
 ] as const satisfies readonly MessageType[];
 
 type Expect<T extends true> = T;
@@ -142,6 +282,11 @@ export interface ResponseFor {
   EXECUTE_ACTIONS: ActionResultsMessage;
   HEALTH_CHECK: HealthResultMessage;
   DISCONNECT: DisconnectedMessage;
+  PLAN_REQUEST: PlanReadyMessage;
+  PLAN_APPROVE: PlanApprovedMessage;
+  PLAN_CANCEL: PlanCancelledMessage;
+  FIELD_HIGHLIGHT: FieldHighlightedMessage;
+  PAGE_HASH_CHECK: PageHashMessage;
   PONG: void;
   DISCONNECTED: void;
   PAGE_SNAPSHOT: void;
@@ -149,6 +294,11 @@ export interface ResponseFor {
   CHECKPOINT_DETECTED: void;
   STATE_CHANGED: void;
   HEALTH_RESULT: void;
+  PLAN_READY: void;
+  PLAN_APPROVED: void;
+  PLAN_CANCELLED: void;
+  FIELD_HIGHLIGHTED: void;
+  PAGE_HASH: void;
 }
 
 export type Response<M extends Message> = ResponseFor[M["type"]];

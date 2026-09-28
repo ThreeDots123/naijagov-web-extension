@@ -1,11 +1,32 @@
 # The page hash
 
-A short, stable fingerprint of a portal page's **structure**. The extension computes
-it in the browser; naijagov-api recomputes it from the `/context` body it receives.
-Both must produce the same sixteen characters for the same page, always.
+A short, stable fingerprint of a portal page's **structure**, computed in the browser.
 
-This document is the definition. Neither implementation is the source of truth —
-if they disagree, this file says which one is wrong.
+> ## Correction — 2026-09-28
+>
+> **This document's original premise was wrong, and the E3 task found out why.**
+>
+> It said naijagov-api recomputes *this* hash from the `/context` body and that both
+> sides must produce the same sixteen characters. They do not, and they are not meant
+> to. The backend computes **its own** hash — SHA-256 over the URL path and the
+> `(field_id, normalised label, type)` triples, in `src/context/utils.py` — and its
+> contract says the extension **adopts** the value `/context` returns, while the
+> `page_hash` the extension sends is "compared, never trusted".
+>
+> So there are two hashes with two jobs, and neither can do the other's:
+>
+> | | Algorithm | Computed by | Used for |
+> | --- | --- | --- | --- |
+> | **Ours** (this document) | FNV-1a 64-bit over the canonical snapshot | the content script | suppressing noise between reads, and the approval-time staleness check |
+> | **Theirs** | SHA-256 over path + field triples | naijagov-api | raising `PAGE_CHANGED` on `/plan` |
+>
+> Everything below still correctly specifies **ours**, and `fixtures/page-hash.json`
+> still tests it. What is no longer true is that the backend implements it: job 2
+> below ("recognising a stale plan") is done *twice*, once on each side, each with its
+> own algorithm. `src/sw/context.ts` holds both values and explains the split.
+>
+> Nothing here needs to change for the two repos to agree, because they no longer
+> need to agree on this.
 
 - Extension implementation: `src/shared/page-hash.ts`
 - Fixtures both sides test against: `fixtures/page-hash.json`

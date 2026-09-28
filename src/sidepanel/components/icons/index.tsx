@@ -1,7 +1,7 @@
 /**
  * The panel's icons.
  *
- * Drawn here rather than pulled from a library: seven glyphs are not worth a
+ * Drawn here rather than pulled from a library: a dozen glyphs are not worth a
  * dependency that ships hundreds, and anything running inside the extension has
  * a high bar. All of them are 24-unit stroke drawings on `currentColor`, so a
  * parent sets the colour with a token and the size with a prop.
@@ -142,6 +142,57 @@ export function X({ size, className }: IconProps) {
     <svg {...strokeProps(size, className)}>
       <path d="M6 6 18 18" />
       <path d="M18 6 6 18" />
+    </svg>
+  );
+}
+
+/** A tick. Inside a checked preview row's box. */
+export function Check({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M5 12.5 9.5 17 19 7.5" />
+    </svg>
+  );
+}
+
+/** A pencil. Correct a proposed value. */
+export function Pencil({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+      <path d="M14.5 6.5l3 3" />
+    </svg>
+  );
+}
+
+/**
+ * A warning triangle.
+ *
+ * Beside a row the guard marked `suspicious` — the value resolved and the field took
+ * it, but the key and the label disagree. A warning, not a rejection.
+ */
+export function Warning({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M12 4.5 21 19.5H3z" />
+      <path d="M12 10v4" />
+      <path d="M12 16.8v.2" />
+    </svg>
+  );
+}
+
+/**
+ * An arrow leaving a box. A citation's title.
+ *
+ * Every source opens in a new tab: navigating the tab the user is filling would lose
+ * their work, and this is the glyph that says so before they click.
+ */
+export function ExternalLink({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M14 4h6v6" />
+      <path d="M19.5 4.5 11 13" />
+      <path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" />
     </svg>
   );
 }
