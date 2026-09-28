@@ -1,4 +1,5 @@
 import type { Action, ActionResult } from "@/shared/actions";
+import { isChatEntryKey } from "@/shared/chat";
 
 /**
  * Everything the extension does sits in one of these states.
@@ -56,6 +57,48 @@ export interface SessionState {
   /** Planned but unconfirmed. Cleared, never kept, when a checkpoint fires. */
   pendingActions?: Action[];
   lastResults?: ActionResult[];
+  /**
+   * What `POST /context` established about this page, and which of our own reads it
+   * belongs to.
+   *
+   * Kept because `POST /plan` needs a `session_id` and cannot obtain one itself, and
+   * because the server's hash is not ours: `/context` computes SHA-256 over the URL
+   * path and the field triples, we compute FNV-1a over the whole canonical snapshot,
+   * and the two never agree. The backend's contract says the extension adopts the
+   * server's value for the `PAGE_CHANGED` comparison, so both are stored and each is
+   * used for the one job it can do.
+   */
+  context?: PageContextRef;
+  /** The pending plan, for the approval path. Cleared on approval and on cancel. */
+  pendingPlan?: PendingPlanRef;
+}
+
+export interface PageContextRef {
+  sessionId: string;
+  /** The server's hash. Sent back on `/plan`; never compared against ours. */
+  serverPageHash: string;
+  /**
+   * Our own hash of the read this context describes.
+   *
+   * When the live page no longer hashes to this, the context is stale and `/context`
+   * is posted again before the next plan. Comparing our hash to our hash is the only
+   * comparison that means anything locally.
+   */
+  localPageHash: string;
+  supported: boolean;
+}
+
+export interface PendingPlanRef {
+  planId: string;
+  /** The transcript turn holding the preview, so approval can find it. */
+  turnId: string;
+  /**
+   * Our local hash when the plan was made.
+   *
+   * Re-checked at approval. If the page has moved since, the plan is discarded
+   * rather than applied to a page it was not built for.
+   */
+  localPageHash: string;
 }
 
 export const INITIAL_SESSION: SessionState = { state: "IDLE" };
@@ -73,14 +116,18 @@ export function sessionKey(tabId: number): string {
 }
 
 /**
- * Is this one of the per-tab session entries?
+ * Is this one of the per-tab entries a disconnect must remove?
  *
  * A disconnect has to clear every tab's state without knowing which tabs exist,
  * and `chrome.storage.session` also holds things that are not per-tab — the
  * health result — which must survive.
+ *
+ * Transcripts count. A tab's chat holds values the user gave this account, and a
+ * thread that outlived the account it belongs to is exactly the leak the disconnect
+ * exists to prevent.
  */
 export function isSessionEntryKey(key: string): boolean {
-  return key.startsWith(SESSION_KEY_PREFIX);
+  return key.startsWith(SESSION_KEY_PREFIX) || isChatEntryKey(key);
 }
 
 /** Where the worker parks the last backend health result. Not per tab. */

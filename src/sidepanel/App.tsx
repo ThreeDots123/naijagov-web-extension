@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { FieldId } from "@/shared/actions";
+import type { ApprovedRow } from "@/shared/messages";
 import { Composer } from "@/sidepanel/components/composer";
 import { ConnectCard } from "@/sidepanel/components/connect-card";
+import { Transcript } from "@/sidepanel/components/chat/transcript";
 import type { ScenarioKey } from "@/sidepanel/components/dev/state-switcher";
 import {
   SCENARIOS,
@@ -11,6 +14,13 @@ import { PanelHeader } from "@/sidepanel/components/panel-header";
 import { QuickPrompts } from "@/sidepanel/components/quick-prompts";
 import { StatusStrip } from "@/sidepanel/components/status-strip";
 import { useBackendHealth } from "@/sidepanel/hooks/use-backend-health";
+import {
+  approvePlan,
+  cancelPlan,
+  highlightField,
+  sendMessage,
+  useChat,
+} from "@/sidepanel/hooks/use-chat";
 import { useConnectionCheck } from "@/sidepanel/hooks/use-connection-check";
 import { useCopilotState } from "@/sidepanel/hooks/use-copilot-state";
 import {
@@ -24,12 +34,13 @@ import { describeState, NOT_CONNECTED } from "@/sidepanel/lib/status";
 /**
  * The panel.
  *
- * The only stateful component: everything below it takes props and renders. All
- * four hooks live here, which is what keeps `chrome.*` out of the components and
- * makes each of them something you can look at in isolation.
+ * The only stateful component: everything below it takes props and renders. All five
+ * hooks live here, which is what keeps `chrome.*` out of the components and makes each
+ * of them something you can look at on its own.
  *
- * Nothing here talks to the AI. The quick prompts and the composer fill the
- * field and call a handler that does nothing yet — the transcript is its own task.
+ * The transcript is not held here. It lives in `chrome.storage.session` and the panel
+ * subscribes to it, so a turn that arrived while the panel was closed is simply there
+ * on the next open.
  */
 
 export function App() {
@@ -37,11 +48,12 @@ export function App() {
   const live = useCopilotState();
   const { status: backend, check: checkBackend } = useBackendHealth();
   const connectionCheck = useConnectionCheck(checkBackend);
+  const chat = useChat(live.tabId);
 
   const [draft, setDraft] = useState("");
 
-  // Development only. `SCENARIOS.live` is the real thing, and the production
-  // build drops this along with the switcher itself.
+  // Development only. `SCENARIOS.live` is the real thing, and the production build
+  // drops this along with the switcher itself.
   const [scenario, setScenario] = useState<ScenarioKey>("live");
   const override =
     import.meta.env.DEV && scenario !== "live"
@@ -57,15 +69,52 @@ export function App() {
   const status = connected ? describeState(state, supported) : NOT_CONNECTED;
   const stopped = state === "CHECKPOINT";
 
-  function submit() {
-    // Wired in the chat task. Left deliberately inert rather than stubbed with a
-    // fake reply, so nothing in the panel can look like it works before it does.
+  const thinking = state === "PLANNING";
+  // `EXECUTING` keeps the composer shut too: the approved actions are running and the
+  // user should not be able to start a second turn on top of them.
+  const busy = thinking || state === "EXECUTING";
+
+  // Nothing should be left pointing at a field once the panel goes away.
+  useEffect(() => () => highlightField(), []);
+
+  async function submit() {
+    const text = draft.trim();
+    if (text.length === 0 || busy) return;
+
+    setDraft("");
+    await sendMessage(text);
+  }
+
+  async function resend(text: string) {
+    if (busy) return;
+    await sendMessage(text);
   }
 
   function pickPrompt(prompt: string) {
     setDraft(prompt);
-    submit();
+    void sendMessage(prompt);
   }
+
+  function approve(turnId: string, rows: readonly ApprovedRow[]) {
+    highlightField();
+    void approvePlan(turnId, rows);
+  }
+
+  function cancel(turnId: string) {
+    highlightField();
+    void cancelPlan(turnId);
+  }
+
+  /** A missing-data chip loads its question into the composer; the user answers it. */
+  function ask(question: string) {
+    setDraft(question);
+  }
+
+  function point(fieldId?: FieldId) {
+    highlightField(fieldId);
+  }
+
+  const started = chat.turns.length > 0;
 
   return (
     <div className="flex h-dvh flex-col bg-page text-ink">
@@ -77,17 +126,35 @@ export function App() {
         url={override ? undefined : live.url}
         backend={backend}
         check={connectionCheck}
-        // Hidden without a token, and inert under a dev scenario — the switcher
-        // fakes what the panel displays and must not be able to wipe a real one.
+        // Hidden without a token, and inert under a dev scenario — the switcher fakes
+        // what the panel displays and must not be able to wipe a real one.
         onDisconnect={connected && !override ? disconnect : undefined}
       />
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-4">
-
+      <main data-scroller className="min-h-0 flex-1 overflow-y-auto p-4">
         {token.status === "loading" && !override ? null : connected ? (
           <>
-            <GreetingBubble supported={supported} />
-            <QuickPrompts disabled={stopped} onPick={pickPrompt} />
+            {/*
+              The greeting and the prompts are the empty state. Once a conversation
+              starts they are gone rather than scrolled past — a "quick prompts" panel
+              above a live thread is a dead end the user has already moved beyond.
+            */}
+            {started ? (
+              <Transcript
+                turns={chat.turns}
+                thinking={thinking}
+                onApprove={approve}
+                onCancel={cancel}
+                onAsk={ask}
+                onRetry={(text) => void resend(text)}
+                onPoint={point}
+              />
+            ) : (
+              <>
+                <GreetingBubble supported={supported} />
+                <QuickPrompts disabled={stopped || busy} onPick={pickPrompt} />
+              </>
+            )}
           </>
         ) : (
           <ConnectCard
@@ -97,11 +164,23 @@ export function App() {
         )}
       </main>
 
+      {/*
+        Arriving replies announce here, once.
+
+        A second polite region alongside the status strip's, deliberately: that one
+        announces the *state* in words and would otherwise flip between "Thinking" and
+        a paragraph of prose. Only the reply is announced — never the card, which a
+        screen reader reaches as a labelled group in its own right.
+      */}
+      <p aria-live="polite" className="sr-only">
+        {lastReply(chat.turns)}
+      </p>
+
       <Composer
         value={draft}
         onChange={setDraft}
-        onSubmit={submit}
-        disabled={!connected}
+        onSubmit={() => void submit()}
+        disabled={!connected || busy || stopped}
         placeholder={
           connected ? "Type your message…" : "Connect your account to start"
         }
@@ -116,4 +195,17 @@ export function App() {
       </footer>
     </div>
   );
+}
+
+/**
+ * The newest Copilot reply, for the live region.
+ *
+ * Only the last one, and only when it is the last turn: announcing an older reply
+ * again because a system note arrived after it would read as the assistant repeating
+ * itself.
+ */
+function lastReply(turns: readonly { role: string; text: string }[]): string {
+  const last = turns[turns.length - 1];
+
+  return last?.role === "copilot" ? last.text : "";
 }

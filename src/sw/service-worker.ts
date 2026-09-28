@@ -1,6 +1,8 @@
 import { matchesSupportedHost } from "@/shared/hosts";
 import type {
   DisconnectedMessage,
+  FieldHighlightedMessage,
+  FieldHighlightMessage,
   Message,
   PongMessage,
   Response,
@@ -14,7 +16,8 @@ import {
 } from "@/shared/messages";
 import type { HealthState } from "@/shared/state";
 import { ACCOUNT_KEYS, HEALTH_KEY } from "@/shared/state";
-import { getHealth } from "@/sw/api";
+import { getHealth, isHealthy } from "@/sw/api";
+import { clearChat } from "@/sw/chat";
 import {
   activeSupportedTab,
   beginReading,
@@ -22,6 +25,8 @@ import {
   readActiveTab,
   receiveSnapshot,
 } from "@/sw/page";
+import { requestPlan } from "@/sw/plan";
+import { approvePlan, cancelPlan } from "@/sw/plan-approval";
 import { clearAllSessions, clearSession } from "@/sw/session";
 
 /**
@@ -64,6 +69,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearSession(tabId);
+  void clearChat(tabId);
 });
 
 async function handleMessage(
@@ -93,6 +99,18 @@ async function handleMessage(
     case "DISCONNECT":
       return disconnect();
 
+    case "PLAN_REQUEST":
+      return requestPlan((await activeSupportedTab()).id, message.message);
+
+    case "PLAN_APPROVE":
+      return approvePlan((await activeSupportedTab()).id, message.turnId, message.rows);
+
+    case "PLAN_CANCEL":
+      return cancelPlan((await activeSupportedTab()).id, message.turnId);
+
+    case "FIELD_HIGHLIGHT":
+      return highlightOnPage(message);
+
     // Declared, not built. The executor task replaces these two lines, not the
     // contract.
     case "EXECUTE_ACTIONS":
@@ -104,6 +122,13 @@ async function handleMessage(
     case "STATE_CHANGED":
     case "HEALTH_RESULT":
     case "DISCONNECTED":
+    case "PLAN_READY":
+    case "PLAN_APPROVED":
+    case "PLAN_CANCELLED":
+    case "FIELD_HIGHLIGHTED":
+    case "PAGE_HASH":
+    // Sent *by* the worker to a content script, never to it.
+    case "PAGE_HASH_CHECK":
       throw new Error(`${message.type} is not addressed to the service worker.`);
 
     default:
@@ -121,6 +146,26 @@ function tabIdOf(sender: chrome.runtime.MessageSender, type: string): number {
   const tabId = sender.tab?.id;
   if (tabId === undefined) throw new Error(`${type} arrived without a tab.`);
   return tabId;
+}
+
+/**
+ * Pass a highlight request through to the page.
+ *
+ * The panel cannot reach a content script itself, so a hovered preview row goes the
+ * long way round. A tab with nothing listening is the ordinary case rather than an
+ * error — the user may have navigated — and it answers "nothing drawn" instead of
+ * throwing, because a failed hover must never interrupt what the user was reading.
+ */
+async function highlightOnPage(
+  message: FieldHighlightMessage,
+): Promise<FieldHighlightedMessage> {
+  try {
+    const tab = await activeSupportedTab();
+
+    return await sendToTab(tab.id, message);
+  } catch {
+    return { type: "FIELD_HIGHLIGHTED", drawn: false };
+  }
 }
 
 /** panel → sw → content → back again. The proof that the pipe is connected. */
@@ -167,7 +212,7 @@ async function checkHealth(): Promise<HealthState> {
 
   try {
     const response = await getHealth();
-    health = { reachable: response.ok, checkedAt: Date.now(), version: response.version };
+    health = { reachable: isHealthy(response), checkedAt: Date.now() };
   } catch {
     health = { reachable: false, checkedAt: Date.now() };
   }
