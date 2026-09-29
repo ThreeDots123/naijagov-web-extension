@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FieldId } from "@/shared/actions";
 import type { ApprovedRow } from "@/shared/messages";
+import { CheckpointBanner } from "@/sidepanel/components/checkpoint/checkpoint-banner";
 import { Composer } from "@/sidepanel/components/composer";
 import { ConnectCard } from "@/sidepanel/components/connect-card";
 import { Transcript } from "@/sidepanel/components/chat/transcript";
@@ -16,13 +17,18 @@ import { StatusStrip } from "@/sidepanel/components/status-strip";
 import { useBackendHealth } from "@/sidepanel/hooks/use-backend-health";
 import {
   approvePlan,
+  cancelCheckpoint,
   cancelPlan,
+  continueFromCheckpoint,
   highlightField,
+  retryAction,
+  revealField,
   sendMessage,
   useChat,
 } from "@/sidepanel/hooks/use-chat";
 import { useConnectionCheck } from "@/sidepanel/hooks/use-connection-check";
 import { useCopilotState } from "@/sidepanel/hooks/use-copilot-state";
+import { useRunProgress } from "@/sidepanel/hooks/use-run-progress";
 import {
   disconnect,
   openProfile,
@@ -51,6 +57,10 @@ export function App() {
   const chat = useChat(live.tabId);
 
   const [draft, setDraft] = useState("");
+  /** The row whose `Try again` is in flight, so only that button goes inert. */
+  const [retrying, setRetrying] = useState<string>();
+  /** The re-read a checkpoint's continue triggers. Holds the banner's checking state. */
+  const [resuming, setResuming] = useState(false);
 
   // Development only. `SCENARIOS.live` is the real thing, and the production build
   // drops this along with the switcher itself.
@@ -70,9 +80,16 @@ export function App() {
   const stopped = state === "CHECKPOINT";
 
   const thinking = state === "PLANNING";
+  const executing = state === "EXECUTING";
   // `EXECUTING` keeps the composer shut too: the approved actions are running and the
   // user should not be able to start a second turn on top of them.
-  const busy = thinking || state === "EXECUTING";
+  const busy = thinking || executing;
+
+  const progress = useRunProgress(executing);
+
+  // A dev scenario fakes the state it displays and must not be able to drive a real
+  // checkpoint's buttons, so the banner reads from the live session either way.
+  const checkpoint = override ? undefined : live.checkpoint;
 
   // Nothing should be left pointing at a field once the panel goes away.
   useEffect(() => () => highlightField(), []);
@@ -114,6 +131,44 @@ export function App() {
     highlightField(fieldId);
   }
 
+  /** `Show me`: draw on the field and bring the page to it. */
+  function show(fieldId: FieldId) {
+    revealField(fieldId);
+  }
+
+  async function retry(turnId: string, actionId: string) {
+    if (retrying !== undefined) return;
+
+    setRetrying(actionId);
+    try {
+      await retryAction(turnId, actionId);
+    } finally {
+      setRetrying(undefined);
+    }
+  }
+
+  /**
+   * `I've done it — continue`.
+   *
+   * Always a fresh read, never a resume. Whatever the read finds — a clear page, the
+   * same step still unfinished, a page that has moved on — is written to the session
+   * by the worker, so the banner below simply re-renders from it.
+   */
+  async function resume() {
+    if (resuming) return;
+
+    setResuming(true);
+    try {
+      await continueFromCheckpoint();
+    } finally {
+      setResuming(false);
+    }
+  }
+
+  async function abandon() {
+    await cancelCheckpoint();
+  }
+
   const started = chat.turns.length > 0;
 
   return (
@@ -148,10 +203,14 @@ export function App() {
                 onAsk={ask}
                 onRetry={(text) => void resend(text)}
                 onPoint={point}
+                onShow={show}
+                onRetryAction={(turnId, actionId) => void retry(turnId, actionId)}
+                {...(retrying === undefined ? {} : { retrying })}
+                {...(progress === undefined ? {} : { progress })}
               />
             ) : (
               <>
-                <GreetingBubble supported={supported} />
+                <GreetingBubble supported={supported} stopped={stopped} />
                 <QuickPrompts disabled={stopped || busy} onPick={pickPrompt} />
               </>
             )}
@@ -176,13 +235,34 @@ export function App() {
         {lastReply(chat.turns)}
       </p>
 
+      {/*
+        Pinned above the composer, which stays live beneath it. A user stopped at a
+        one-time code is exactly the user who wants to ask what the code is for, and a
+        panel that goes silent at that moment is a panel that abandons them at the
+        hardest step. Quick prompts go, because none of them can help here.
+      */}
+      {checkpoint ? (
+        <CheckpointBanner
+          checkpoint={checkpoint}
+          checking={resuming}
+          onContinue={() => void resume()}
+          onCancel={() => void abandon()}
+        />
+      ) : null}
+
       <Composer
         value={draft}
         onChange={setDraft}
         onSubmit={() => void submit()}
-        disabled={!connected || busy || stopped}
+        disabled={!connected || busy}
         placeholder={
-          connected ? "Type your message…" : "Connect your account to start"
+          !connected
+            ? "Connect your account to start"
+            : executing
+              ? "One moment — filling the form…"
+              : stopped
+                ? "Ask me anything about this step…"
+                : "Type your message…"
         }
       />
 

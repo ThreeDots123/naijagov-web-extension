@@ -12,6 +12,7 @@ import type { HealthState } from "@/shared/state";
 import { ACCOUNT_KEYS, HEALTH_KEY } from "@/shared/state";
 import { getHealth, isHealthy } from "@/sw/api";
 import { clearChat } from "@/sw/chat";
+import { cancelCheckpoint, continueFromCheckpoint } from "@/sw/checkpoint";
 import {
   activeSupportedTab,
   beginReading,
@@ -21,6 +22,7 @@ import {
 } from "@/sw/page";
 import { requestPlan } from "@/sw/plan";
 import { approvePlan, cancelPlan } from "@/sw/plan-approval";
+import { retryAction } from "@/sw/run";
 import { clearAllSessions, clearSession } from "@/sw/session";
 
 /**
@@ -81,10 +83,23 @@ async function handleMessage(
       return receiveSnapshot(message.snapshot, tabIdOf(sender, message.type));
 
     case "CHECKPOINT_DETECTED":
-      return raiseCheckpoint(
-        tabIdOf(sender, message.type),
-        message.reason,
-        message.fieldId,
+      return raiseCheckpoint(tabIdOf(sender, message.type), {
+        kind: message.kind,
+        reason: message.reason,
+        ...(message.fieldId === undefined ? {} : { fieldId: message.fieldId }),
+      });
+
+    case "CHECKPOINT_CONTINUE":
+      return continueFromCheckpoint((await activeSupportedTab()).id);
+
+    case "CHECKPOINT_CANCEL":
+      return cancelCheckpoint((await activeSupportedTab()).id);
+
+    case "ACTION_RETRY":
+      return retryAction(
+        (await activeSupportedTab()).id,
+        message.turnId,
+        message.actionId,
       );
 
     case "HEALTH_CHECK":
@@ -120,6 +135,9 @@ async function handleMessage(
     case "PLAN_READY":
     case "PLAN_APPROVED":
     case "PLAN_CANCELLED":
+    case "CHECKPOINT_RESUMED":
+    case "CHECKPOINT_CANCELLED":
+    case "ACTION_RETRIED":
     case "FIELD_HIGHLIGHTED":
     case "PAGE_HASH":
     // Sent *by* the worker to a content script, never to it.

@@ -8,9 +8,11 @@
 
 export interface GreetingBubbleProps {
   supported: boolean;
+  /** Stopped at a checkpoint. The quick prompts below are disabled, so don't offer them. */
+  stopped: boolean;
 }
 
-export function GreetingBubble({ supported }: GreetingBubbleProps) {
+export function GreetingBubble({ supported, stopped }: GreetingBubbleProps) {
   return (
     <section className="flex gap-3 rounded-[10px] bg-green-50 p-4">
       <span className="n-mark mt-0.5 size-7 text-green-900" aria-hidden />
@@ -21,9 +23,11 @@ export function GreetingBubble({ supported }: GreetingBubbleProps) {
         </h2>
 
         <p className="mt-1.5 text-[13.5px] leading-[1.45] text-ink-muted">
-          {supported
-            ? "Tell me what you're trying to do, or choose an option below."
-            : "I don't know this page yet, but I can still answer questions about it."}
+          {stopped
+            ? "This page needs something only you can do — see below. Ask me anything about it."
+            : supported
+              ? "Tell me what you're trying to do, or choose an option below."
+              : "I don't know this page yet, but I can still answer questions about it."}
         </p>
       </div>
     </section>

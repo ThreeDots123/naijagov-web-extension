@@ -1,7 +1,8 @@
 import type { PageContext, Plan } from "@/shared/plan";
 import { TOKEN_KEY } from "@/shared/state";
-import type { WireContextRequest, WirePlanRequest } from "@/sw/payload";
-import { parseErrorBody, parsePageContext, parsePlan, unwrapEnvelope } from "@/sw/wire";
+import type { RunOutcome } from "@/shared/results";
+import type { WireContextRequest, WirePlanRequest, WireResultsRequest } from "@/sw/payload";
+import { parseErrorBody, parsePageContext, parsePlan, parseRunHint, unwrapEnvelope } from "@/sw/wire";
 
 /**
  * The backend client, and the only file in this repo that calls `fetch`.
@@ -218,5 +219,22 @@ export async function postPlan(
 ): Promise<Plan> {
   return parsePlan(
     await apiFetch<unknown>("/plan", { method: "POST", body, signal }),
+  );
+}
+
+/**
+ * `POST /results`. What the run actually managed, and what the user does next.
+ *
+ * Reporting, not asking: nothing in the body requests permission for anything, and
+ * the run is already over by the time this is called. The answer's only use in the
+ * panel is the summary's footer sentence, which is why a failure here is allowed to
+ * cost the footer its sentence and nothing else.
+ */
+export async function postResults(
+  body: WireResultsRequest,
+  signal?: AbortSignal,
+): Promise<Pick<RunOutcome, "hint" | "finalStep">> {
+  return parseRunHint(
+    await apiFetch<unknown>("/results", { method: "POST", body, signal }),
   );
 }

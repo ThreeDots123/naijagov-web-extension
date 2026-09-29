@@ -7,6 +7,7 @@ import { Check } from "@/sidepanel/components/icons";
 import { BlockedSection } from "@/sidepanel/components/preview/blocked-section";
 import { MissingChips } from "@/sidepanel/components/preview/missing-chips";
 import { PreviewRow } from "@/sidepanel/components/preview/preview-row";
+import type { RunProgress } from "@/sidepanel/hooks/use-run-progress";
 
 /**
  * The gate.
@@ -36,6 +37,8 @@ export interface FillPreviewProps {
   onCancel: (turnId: string) => void;
   onAsk: (question: string) => void;
   onPoint: (fieldId?: FieldId) => void;
+  /** Present only while this turn's batch is running. */
+  progress?: RunProgress;
 }
 
 export function FillPreview({
@@ -46,6 +49,7 @@ export function FillPreview({
   onCancel,
   onAsk,
   onPoint,
+  progress,
 }: FillPreviewProps) {
   const headingId = useId();
   const rows = fillableRows(plan);
@@ -67,7 +71,13 @@ export function FillPreview({
   // Everything but `pending` is history. The turn stays in the transcript so the user
   // can scroll back to what was proposed; none of it is actionable any more.
   if (turn.status !== "pending") {
-    return <CollapsedPreview turn={turn} total={rows.length} />;
+    return (
+      <CollapsedPreview
+        turn={turn}
+        total={rows.length}
+        {...(progress === undefined ? {} : { progress })}
+      />
+    );
   }
 
   function toggle(actionId: string, checked: boolean) {
@@ -168,17 +178,40 @@ export function FillPreview({
   );
 }
 
+interface CollapsedPreviewProps {
+  turn: CopilotTurn;
+  total: number;
+  progress?: RunProgress;
+}
+
 /**
  * The card after it has been answered.
  *
  * One line, because the transcript's job now is to let the user scroll back and see
- * that this happened — not to keep offering a decision they have already made.
+ * that this happened — not to keep offering a decision they have already made. While
+ * the batch is running that same line carries the counter: eight fields produce one
+ * line that counts, not eight lines that arrive.
  */
-function CollapsedPreview({ turn, total }: { turn: CopilotTurn; total: number }) {
+function CollapsedPreview({ turn, total, progress }: CollapsedPreviewProps) {
   const summary = (() => {
     switch (turn.status) {
-      case "approved":
-        return `Filling ${turn.approvedCount ?? total} of ${total} ${total === 1 ? "field" : "fields"}.`;
+      case "approved": {
+        const approved = turn.approvedCount ?? total;
+
+        if (!progress) {
+          return `Filling ${approved} of ${total} ${total === 1 ? "field" : "fields"}.`;
+        }
+
+        // Ahead of the engine's own timeout, so the panel is the first to admit
+        // something is wrong rather than sitting on a number that has stopped moving.
+        if (progress.stalled) return "This is taking longer than expected…";
+
+        // The one in flight, not the one just finished: "Filling 3 of 8" should name
+        // the field the user can watch being written.
+        const batch = progress.total || approved;
+
+        return `Filling ${Math.min(progress.done + 1, batch)} of ${batch}…`;
+      }
       case "cancelled":
         return "Cancelled — nothing on the page was changed.";
       case "stale":
@@ -187,6 +220,7 @@ function CollapsedPreview({ turn, total }: { turn: CopilotTurn; total: number })
         return undefined;
     }
   })();
+
 
   if (!summary) return null;
 

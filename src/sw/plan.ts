@@ -6,11 +6,11 @@ import { isPlanErrorCode } from "@/shared/plan";
 import { ApiError, postPlan } from "@/sw/api";
 import { appendTurn } from "@/sw/chat";
 import { clearContext, ensureContext } from "@/sw/context";
-import { fetchSnapshot, raiseCheckpoint } from "@/sw/page";
+import { blockerOf, fetchSnapshot, raiseCheckpoint } from "@/sw/page";
 import { toPlanRequest } from "@/sw/payload";
 import { isFillableRow } from "@/sw/plan-actions";
 import { reread } from "@/sw/plan-page";
-import { setSession, setState } from "@/sw/session";
+import { getSession, setSession, setState } from "@/sw/session";
 
 /**
  * A turn, from the user's message to a preview waiting for approval.
@@ -109,6 +109,12 @@ function systemTurn(error: PlanError, retryMessage: string): SystemTurn {
  * mid-turn finds the answer waiting instead of losing it.
  */
 export async function requestPlan(tabId: number, message: string): Promise<PlanReadyMessage> {
+  // Asking a question is the one thing the user may still do at a checkpoint, and
+  // the answer must not cost them the banner. The turn runs, and every path below
+  // puts the tab back where it was rather than letting a question do what only
+  // `continue` is allowed to do.
+  const stopped = (await getSession(tabId)).state === "CHECKPOINT";
+
   await appendTurn(tabId, { id: turnId(), role: "user", text: message, at: Date.now() });
   await setState(tabId, "PLANNING");
 
@@ -117,15 +123,12 @@ export async function requestPlan(tabId: number, message: string): Promise<PlanR
 
     // A CAPTCHA or a payment frame appeared. Stop, and do not spend a model call on a
     // page whose next step is not ours to take.
-    if (snapshot.checkpoint.blocking) {
-      const blocker = snapshot.sensitiveFlags.find(
-        (flag) => flag.kind === "captcha" || flag.kind === "payment",
-      );
-      await raiseCheckpoint(
-        tabId,
-        blocker?.reason ?? "This page needs you to take over.",
-        blocker?.fieldId,
-      );
+    //
+    // Not when the user is already stopped at one: they are looking at the banner
+    // and have just asked about it. Raising it again in place of an answer is the
+    // panel going quiet at the exact moment it said it would still talk.
+    if (snapshot.checkpoint.blocking && !stopped) {
+      await raiseCheckpoint(tabId, blockerOf(snapshot));
 
       return { type: "PLAN_READY" };
     }
@@ -147,9 +150,9 @@ export async function requestPlan(tabId: number, message: string): Promise<PlanR
       }),
     );
 
-    await recordPlan(tabId, plan, snapshot.pageHash);
+    await recordPlan(tabId, plan, snapshot.pageHash, stopped);
   } catch (error) {
-    await recordFailure(tabId, toPlanError(error), message);
+    await recordFailure(tabId, toPlanError(error), message, stopped);
   }
 
   return { type: "PLAN_READY" };
@@ -163,8 +166,16 @@ export async function requestPlan(tabId: number, message: string): Promise<PlanR
  * all still belong on screen — but a card headed "I can fill 0 of 0 fields" with an
  * approve button is a gate in front of an empty room.
  */
-async function recordPlan(tabId: number, plan: Plan, localPageHash: string): Promise<void> {
-  const fillable = plan.actions.filter(isFillableRow).length;
+async function recordPlan(
+  tabId: number,
+  plan: Plan,
+  localPageHash: string,
+  stopped: boolean,
+): Promise<void> {
+  // A turn taken at a checkpoint answers a question; it never offers a fill. The
+  // reply, its sources and its blocked rows all still belong on screen — an approve
+  // button on a page the detector has refused does not.
+  const fillable = stopped ? 0 : plan.actions.filter(isFillableRow).length;
   const id = turnId();
 
   await appendTurn(tabId, {
@@ -175,6 +186,15 @@ async function recordPlan(tabId: number, plan: Plan, localPageHash: string): Pro
     plan,
     ...(fillable > 0 ? { status: "pending" as const } : {}),
   });
+
+  if (stopped) {
+    await setSession(tabId, { pendingPlan: undefined });
+    // Straight back to the banner, with the reason, the kind and the cancelled count
+    // it already had — none of them were touched by the turn.
+    await setState(tabId, "CHECKPOINT");
+
+    return;
+  }
 
   if (fillable === 0) {
     await setSession(tabId, { pendingPlan: undefined });
@@ -205,8 +225,18 @@ async function recordFailure(
   tabId: number,
   error: PlanError,
   retryMessage: string,
+  stopped: boolean,
 ): Promise<void> {
   await appendTurn(tabId, systemTurn(error, retryMessage));
+
+  // A failed question does not release a checkpoint either. `PAGE_CHANGED` is the one
+  // exception, and only because it re-reads: whatever the new page holds decides where
+  // the tab lands, which is the honest answer to "the page moved under us".
+  if (stopped && error.code !== "PAGE_CHANGED") {
+    await setState(tabId, "CHECKPOINT");
+
+    return;
+  }
 
   if (error.code === "PAGE_CHANGED") {
     await clearContext(tabId);

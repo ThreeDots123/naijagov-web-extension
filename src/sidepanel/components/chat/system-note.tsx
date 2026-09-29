@@ -20,7 +20,12 @@ export interface SystemNoteProps {
 }
 
 export function SystemNote({ turn, onRetry }: SystemNoteProps) {
-  const canRetry = onRetry !== undefined && turn.retryMessage !== undefined && isRetryable(turn.code);
+  // A note with no code is not a failure, so there is nothing to retry.
+  const canRetry =
+    onRetry !== undefined &&
+    turn.retryMessage !== undefined &&
+    turn.code !== undefined &&
+    isRetryable(turn.code);
 
   return (
     <div role="note" className="rounded-lg border border-rule bg-page px-2.5 py-2">

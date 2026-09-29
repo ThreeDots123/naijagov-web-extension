@@ -1,6 +1,12 @@
 import type { FieldType, SerializedOption } from "@/shared/page";
 import { cleanText, elementText, isVisible, walkElements } from "@/content/dom";
-import { fieldTypeOf, isButtonLike, isContentEditable, owningForm } from "@/content/classify";
+import {
+  fieldTypeOf,
+  isButtonLike,
+  isContentEditable,
+  isNavigationLink,
+  owningForm,
+} from "@/content/classify";
 import type { ResolvedLabel } from "@/content/labels";
 import { findHint, humanise, isRequired, resolveLabel } from "@/content/labels";
 
@@ -35,6 +41,7 @@ export interface FieldCandidate {
 export interface Candidates {
   fields: FieldCandidate[];
   buttons: Element[];
+  links: Element[];
   frames: Element[];
   headings: string[];
   contentEditable: number;
@@ -46,6 +53,7 @@ export function collectCandidates(root: Document | Element = document): Candidat
 
   const fields: FieldCandidate[] = [];
   const buttons: Element[] = [];
+  const links: Element[] = [];
   const frames: Element[] = [];
   const headings: string[] = [];
   const radioGroups = new Map<string, Element[]>();
@@ -79,6 +87,13 @@ export function collectCandidates(root: Document | Element = document): Candidat
       continue;
     }
 
+    // Asked after `isButtonLike`, so an `<a role="button">` is a button and not
+    // both. On a landing page these are the only things on the page at all.
+    if (isNavigationLink(element)) {
+      links.push(element);
+      continue;
+    }
+
     const type = fieldTypeOf(element);
     if (!type) continue;
 
@@ -100,7 +115,7 @@ export function collectCandidates(root: Document | Element = document): Candidat
     if (candidate) fields.push(candidate);
   }
 
-  return { fields, buttons, frames, headings, contentEditable, unreadable };
+  return { fields, buttons, links, frames, headings, contentEditable, unreadable };
 }
 
 function describeField(element: Element, type: FieldType): FieldCandidate {

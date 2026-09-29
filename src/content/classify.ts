@@ -63,7 +63,25 @@ export function isButtonLike(element: Element): boolean {
 }
 
 /**
- * A button's visible text, falling back to its accessible name.
+ * A navigation link: an `<a href>` that is not dressed as a button.
+ *
+ * `<a role="button">` is deliberately excluded — `isButtonLike` already claims it,
+ * and a thing that calls itself a button is treated as one. The order the collector
+ * asks these two questions in is what keeps them from both owning the same element.
+ *
+ * The href is not inspected here. A `javascript:` handler and a bare `#` are still
+ * links a person clicks, and their *text* is what lets the Copilot name them; the
+ * serializer decides separately whether the destination is one it can describe.
+ */
+export function isNavigationLink(element: Element): boolean {
+  if (element.tagName !== "A") return false;
+  if (element.getAttribute("role") === "button") return false;
+
+  return element.hasAttribute("href");
+}
+
+/**
+ * A button's or link's visible text, falling back to its accessible name.
  *
  * For an `<input>` button the caption is the `value` *attribute* — read as an
  * attribute rather than through the `value` property, so that nothing in this

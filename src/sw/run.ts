@@ -1,5 +1,5 @@
 import type { Action } from "@/shared/actions";
-import type { ActionResultsMessage } from "@/shared/messages";
+import type { ActionResultsMessage, ActionRetriedMessage } from "@/shared/messages";
 import { sendToTab } from "@/shared/messages";
 import { SENSITIVE_REASONS } from "@/shared/page";
 import type { ActionResult, RunReport } from "@/shared/results";
@@ -7,6 +7,7 @@ import { countStatuses } from "@/shared/results";
 
 import { raiseCheckpoint } from "@/sw/page";
 import { reread } from "@/sw/plan-page";
+import { mergeRetry, recordRun } from "@/sw/results";
 import { getSession, setSession, setState } from "@/sw/session";
 
 /**
@@ -40,10 +41,51 @@ export async function runPendingActions(tabId: number): Promise<RunReport> {
   }
 
   const report = await dispatch(tabId, pendingActions);
-  await setSession(tabId, { lastResults: report.results });
+
+  // The summary is written before the tab is moved on, so a panel watching the state
+  // never sees `READY` with nothing to show for the run that just finished.
+  await recordRun(tabId, report);
   await settle(tabId, report);
 
   return report;
+}
+
+/**
+ * Run one action from the last batch again.
+ *
+ * `Try again` on a row the page refused. The action is taken from what was
+ * dispatched rather than rebuilt from the plan, so what is resent is exactly what
+ * the user approved — including a value they corrected in the preview, which exists
+ * nowhere else.
+ *
+ * It is not a privileged path. The action goes through `EXECUTE_ACTIONS` like any
+ * other, which means the validator re-checks it against the live page and the
+ * current registry: a page that has moved since the run refuses it, rather than
+ * writing a value into whatever now occupies that position.
+ */
+export async function retryAction(
+  tabId: number,
+  turnRef: string,
+  actionId: string,
+): Promise<ActionRetriedMessage> {
+  const { lastRun } = await getSession(tabId);
+
+  // A retry for a run this tab has already moved past. The row stays as it was
+  // rather than being reported as a fresh failure it did not have.
+  if (!lastRun || lastRun.turnId !== turnRef) return { type: "ACTION_RETRIED" };
+
+  const action = lastRun.actions.find((entry) => entry.actionId === actionId);
+  if (!action) return { type: "ACTION_RETRIED" };
+
+  await setState(tabId, "EXECUTING");
+
+  const report = await dispatch(tabId, [action]);
+  const result = report.results[0];
+
+  if (result) await mergeRetry(tabId, turnRef, result);
+  await settle(tabId, report);
+
+  return result ? { type: "ACTION_RETRIED", result } : { type: "ACTION_RETRIED" };
 }
 
 /**
@@ -85,10 +127,17 @@ async function dispatch(tabId: number, actions: readonly Action[]): Promise<RunR
  */
 async function settle(tabId: number, report: RunReport): Promise<void> {
   if (report.checkpoint) {
+    const { kind, fieldId } = report.checkpoint;
+
     await raiseCheckpoint(
       tabId,
-      SENSITIVE_REASONS[report.checkpoint.kind],
-      report.checkpoint.fieldId,
+      {
+        kind,
+        reason: SENSITIVE_REASONS[kind],
+        ...(fieldId === undefined ? {} : { fieldId }),
+      },
+      // The engine already cancelled them; this is the count the banner reports.
+      { cancelled: report.totals.cancelled },
     );
     return;
   }

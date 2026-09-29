@@ -108,6 +108,61 @@ export async function cancelPlan(turnId: string): Promise<void> {
 }
 
 /**
+ * `I've done it — continue`.
+ *
+ * Resolves when the re-read is done, which is what lets the banner sit in its
+ * checking state for exactly as long as the page is being looked at. The outcome is
+ * returned rather than read from storage because "the step is still there" and "the
+ * page could not be reached" both leave the tab at `CHECKPOINT` and the banner needs
+ * to tell them apart.
+ */
+export async function continueFromCheckpoint(): Promise<void> {
+  try {
+    await sendToRuntime({ type: "CHECKPOINT_CONTINUE" });
+  } catch {
+    // The state and the transcript both come from storage, so whatever the worker
+    // decided is already on its way here.
+  }
+}
+
+/** `Cancel this plan`. Nothing further is sent; the transcript keeps a line saying so. */
+export async function cancelCheckpoint(): Promise<void> {
+  try {
+    await sendToRuntime({ type: "CHECKPOINT_CANCEL" });
+  } catch {
+    // Nothing was pending to cancel. The banner goes either way.
+  }
+}
+
+/**
+ * `Try again` on one row.
+ *
+ * The result is written onto the turn by the worker, so the row updates in place
+ * through the transcript subscription rather than from this return value. Awaited
+ * only so the button can show that something is happening.
+ */
+export async function retryAction(turnId: string, actionId: string): Promise<void> {
+  try {
+    await sendToRuntime({ type: "ACTION_RETRY", turnId, actionId });
+  } catch {
+    // The run is gone, or the tab moved. The row keeps the outcome it had.
+  }
+}
+
+/**
+ * `Show me` — point at a field *and* scroll the page to it.
+ *
+ * Separate from `highlightField` because the scroll is the difference: a hover must
+ * never move the page under someone who is reading it, and this is the one case
+ * where moving the page is the whole request.
+ */
+export function revealField(fieldId: FieldId): void {
+  void sendToRuntime({ type: "FIELD_HIGHLIGHT", fieldId, reveal: true }).catch(() => {
+    // No content script on this tab. Expected after a navigation.
+  });
+}
+
+/**
  * Point at a field on the page, or stop pointing.
  *
  * Fire and forget: a hover that fails to draw must never interrupt what the user was

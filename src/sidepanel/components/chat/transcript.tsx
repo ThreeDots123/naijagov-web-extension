@@ -5,6 +5,8 @@ import type { ApprovedRow } from "@/shared/messages";
 import { Sources } from "@/sidepanel/components/chat/sources";
 import { SystemNote } from "@/sidepanel/components/chat/system-note";
 import { FillPreview } from "@/sidepanel/components/preview/fill-preview";
+import { RunSummary } from "@/sidepanel/components/preview/run-summary";
+import type { RunProgress } from "@/sidepanel/hooks/use-run-progress";
 
 /**
  * The conversation.
@@ -27,6 +29,14 @@ export interface TranscriptProps {
   onAsk: (question: string) => void;
   onRetry: (message: string) => void;
   onPoint: (fieldId?: FieldId) => void;
+  /** `Show me` on a result row: point at the field and scroll to it. */
+  onShow: (fieldId: FieldId) => void;
+  /** `Try again` on a result row. */
+  onRetryAction: (turnId: string, actionId: string) => void;
+  /** The action currently being retried, if any. */
+  retrying?: string;
+  /** Present only while a batch is running. */
+  progress?: RunProgress;
 }
 
 export function Transcript({
@@ -37,6 +47,10 @@ export function Transcript({
   onAsk,
   onRetry,
   onPoint,
+  onShow,
+  onRetryAction,
+  retrying,
+  progress,
 }: TranscriptProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
@@ -83,6 +97,10 @@ export function Transcript({
                 onCancel={onCancel}
                 onAsk={onAsk}
                 onPoint={onPoint}
+                onShow={onShow}
+                onRetryAction={onRetryAction}
+                {...(retrying === undefined ? {} : { retrying })}
+                {...(progress === undefined ? {} : { progress })}
               />
             );
 
@@ -121,6 +139,10 @@ interface CopilotBubbleProps {
   onCancel: (turnId: string) => void;
   onAsk: (question: string) => void;
   onPoint: (fieldId?: FieldId) => void;
+  onShow: (fieldId: FieldId) => void;
+  onRetryAction: (turnId: string, actionId: string) => void;
+  retrying?: string;
+  progress?: RunProgress;
 }
 
 function CopilotBubble({
@@ -130,6 +152,10 @@ function CopilotBubble({
   onCancel,
   onAsk,
   onPoint,
+  onShow,
+  onRetryAction,
+  retrying,
+  progress,
 }: CopilotBubbleProps) {
   return (
     <div className="flex gap-2.5">
@@ -144,15 +170,31 @@ function CopilotBubble({
           <>
             <Sources citations={turn.plan.citations} grounding={turn.plan.grounding} />
 
-            <FillPreview
-              turn={turn}
-              plan={turn.plan}
-              disabled={disabled}
-              onApprove={onApprove}
-              onCancel={onCancel}
-              onAsk={onAsk}
-              onPoint={onPoint}
-            />
+            {/*
+              The summary replaces the preview rather than sitting under it. They
+              answer the same question — what is happening to these fields — and the
+              one that has already happened is the one worth keeping on screen.
+            */}
+            {turn.run ? (
+              <RunSummary
+                outcome={turn.run}
+                plan={turn.plan}
+                {...(retrying === undefined ? {} : { retrying })}
+                onShow={onShow}
+                onRetry={(actionId) => onRetryAction(turn.id, actionId)}
+              />
+            ) : (
+              <FillPreview
+                turn={turn}
+                plan={turn.plan}
+                disabled={disabled}
+                onApprove={onApprove}
+                onCancel={onCancel}
+                onAsk={onAsk}
+                onPoint={onPoint}
+                {...(progress === undefined ? {} : { progress })}
+              />
+            )}
           </>
         ) : null}
       </div>

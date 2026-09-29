@@ -1,7 +1,7 @@
 import type { Action, FieldId } from "@/shared/actions";
 import type { ActionResult, RunReport } from "@/shared/results";
 import type { HighlightState } from "@/shared/overlay";
-import type { PageSnapshot } from "@/shared/page";
+import type { PageSnapshot, SensitiveKind } from "@/shared/page";
 import type { CopilotState, HealthState } from "@/shared/state";
 
 /**
@@ -77,7 +77,66 @@ export interface ActionProgressMessage {
 export interface CheckpointDetectedMessage {
   type: "CHECKPOINT_DETECTED";
   reason: string;
+  /**
+   * The detector's category for the step.
+   *
+   * Travels beside the sentence rather than instead of it, because the two have
+   * different audiences: the sentence is what the user reads, the kind is what the
+   * panel branches on for the glyph and the softer resume wording.
+   */
+  kind: SensitiveKind;
   fieldId?: FieldId;
+}
+
+/**
+ * panel → sw. "I've done it — continue".
+ *
+ * Always a fresh read. It cannot mean "carry on with the old plan": finishing a
+ * verification step usually changes the page, and resuming a plan built against the
+ * page as it was is how a value lands in the wrong box.
+ */
+export interface CheckpointContinueMessage {
+  type: "CHECKPOINT_CONTINUE";
+}
+
+/**
+ * sw → panel. What the re-read found.
+ *
+ * `unfinished` is not a failure — the user may simply be mid-way through — so the
+ * banner comes back with softer wording rather than an error.
+ */
+export interface CheckpointResumedMessage {
+  type: "CHECKPOINT_RESUMED";
+  outcome: "clear" | "unfinished" | "navigated" | "unreachable";
+}
+
+/** panel → sw. "Cancel this plan". Nothing further is sent. */
+export interface CheckpointCancelMessage {
+  type: "CHECKPOINT_CANCEL";
+}
+
+export interface CheckpointCancelledMessage {
+  type: "CHECKPOINT_CANCELLED";
+}
+
+/**
+ * panel → sw. Run one action from the last batch again.
+ *
+ * "Try again" on a row the page refused. The action is taken from the dispatched
+ * batch rather than rebuilt, so what is resent is what the user approved — and it
+ * goes through the same validator as any other action, which is what makes a retry
+ * against a page that has since moved a rejection rather than a wrong fill.
+ */
+export interface ActionRetryMessage {
+  type: "ACTION_RETRY";
+  turnId: string;
+  actionId: string;
+}
+
+/** sw → panel. The one action's new outcome, already written onto the turn. */
+export interface ActionRetriedMessage {
+  type: "ACTION_RETRIED";
+  result?: ActionResult;
 }
 
 /** sw → panel. Broadcast on every state write. */
@@ -207,6 +266,13 @@ export interface FieldHighlightMessage {
   /** Absent means "clear everything". */
   fieldId?: FieldId;
   state?: HighlightState;
+  /**
+   * Scroll the field into view as well as drawing on it.
+   *
+   * Off for a hover, which must never move the page under someone who is reading
+   * it. On for "Show me", where moving the page is the entire request.
+   */
+  reveal?: boolean;
 }
 
 /**
@@ -247,6 +313,12 @@ export type Message =
   | ActionResultsMessage
   | ActionProgressMessage
   | CheckpointDetectedMessage
+  | CheckpointContinueMessage
+  | CheckpointResumedMessage
+  | CheckpointCancelMessage
+  | CheckpointCancelledMessage
+  | ActionRetryMessage
+  | ActionRetriedMessage
   | StateChangedMessage
   | HealthCheckMessage
   | HealthResultMessage
@@ -274,6 +346,12 @@ export const MESSAGE_TYPES = [
   "ACTION_RESULTS",
   "ACTION_PROGRESS",
   "CHECKPOINT_DETECTED",
+  "CHECKPOINT_CONTINUE",
+  "CHECKPOINT_RESUMED",
+  "CHECKPOINT_CANCEL",
+  "CHECKPOINT_CANCELLED",
+  "ACTION_RETRY",
+  "ACTION_RETRIED",
   "STATE_CHANGED",
   "HEALTH_CHECK",
   "HEALTH_RESULT",
@@ -315,12 +393,18 @@ export interface ResponseFor {
   PLAN_CANCEL: PlanCancelledMessage;
   FIELD_HIGHLIGHT: FieldHighlightedMessage;
   PAGE_HASH_CHECK: PageHashMessage;
+  CHECKPOINT_CONTINUE: CheckpointResumedMessage;
+  CHECKPOINT_CANCEL: CheckpointCancelledMessage;
+  ACTION_RETRY: ActionRetriedMessage;
   PONG: void;
   DISCONNECTED: void;
   PAGE_SNAPSHOT: void;
   ACTION_RESULTS: void;
   ACTION_PROGRESS: void;
   CHECKPOINT_DETECTED: void;
+  CHECKPOINT_RESUMED: void;
+  CHECKPOINT_CANCELLED: void;
+  ACTION_RETRIED: void;
   STATE_CHANGED: void;
   HEALTH_RESULT: void;
   PLAN_READY: void;
