@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Example Services Portal — Home</title>
+    <!--
+      The landing page: navigation and nothing else.
+
+      No form, no fields, no buttons — every route into the portal is an ordinary
+      anchor, which is what a real agency's home page looks like. Before the
+      serializer collected links this page serialized to a title and four headings,
+      so the only honest thing the Copilot could say about it was that there was
+      nothing here to interact with.
+
+      It also carries a "Make a payment" item in the masthead, on purpose: a
+      flagged link must not put the whole page at a checkpoint the way a payment
+      frame does.
+    -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header>
+      <p class="mark">Example Services Portal</p>
+      <nav aria-label="Main">
+        <a href="./landing.html">Home</a>
+        <a href="./index.html">Renew Licence</a>
+        <a href="./step-2.html">Make a payment</a>
+        <a href="#services">Our services</a>
+        <a href="https://example.gov.test/contact">Contact us</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Welcome to the Example Services Portal</h1>
+      <p>
+        Apply for and renew your documents online. Choose a service below to begin.
+      </p>
+
+      <h2 id="services">Services</h2>
+      <ul class="services">
+        <li><a href="./index.html">Renew your driver's licence</a></li>
+        <li><a href="./index.html">Apply for a new licence</a></li>
+        <li><a href="./awkward.html">Replace a lost licence</a></li>
+        <li><a href="#" class="js-toggle">Check application status</a></li>
+      </ul>
+
+      <h2>Before you start</h2>
+      <p>Have your identification number and a recent photograph ready.</p>
+    </main>
+
+    <footer>
+      <nav aria-label="Footer">
+        <!-- Repeated from the masthead: the serializer must not send these twice. -->
+        <a href="./landing.html">Home</a>
+        <a href="./index.html">Renew Licence</a>
+        <a href="https://example.gov.test/privacy">Privacy policy</a>
+      </nav>
+      <p>Example Services Portal — a fictional service. No real application is made here.</p>
+    </footer>
+  </body>
+</html>

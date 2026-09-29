@@ -5,7 +5,8 @@ import type {
   PageSnapshotMessage,
 } from "@/shared/messages";
 import { broadcast, sendToTab } from "@/shared/messages";
-import type { PageSnapshot } from "@/shared/page";
+import type { PageSnapshot, SensitiveFlag } from "@/shared/page";
+import { UNNAMED_BLOCKER_REASON, pickBlocker } from "@/shared/page";
 import { hasToken } from "@/sw/api";
 import { stalePendingPreviews } from "@/sw/chat";
 import { getSession, setSession, setState } from "@/sw/session";
@@ -82,10 +83,7 @@ export async function receiveSnapshot(snapshot: PageSnapshot, tabId: number): Pr
   await setSession(tabId, { pageHash: snapshot.pageHash });
 
   if (snapshot.checkpoint.blocking) {
-    const blocker = snapshot.sensitiveFlags.find(
-      (entry) => entry.kind === "captcha" || entry.kind === "payment",
-    );
-    await raiseCheckpoint(tabId, blocker?.reason ?? "This page needs you to take over.", blocker?.fieldId);
+    await raiseCheckpoint(tabId, blockerOf(snapshot));
     return;
   }
 
@@ -97,19 +95,53 @@ export async function receiveSnapshot(snapshot: PageSnapshot, tabId: number): Pr
 }
 
 /**
+ * The one flagged thing this page's checkpoint should name.
+ *
+ * `pickBlocker` ranks by role and then by kind — see `shared/page.ts`. The fallback
+ * is a page that is blocking but whose blocker resolved to nothing, which should not
+ * happen and is still not a reason to say nothing.
+ */
+export function blockerOf(snapshot: PageSnapshot): SensitiveFlag {
+  return pickBlocker(snapshot) ?? { kind: "unknown", reason: UNNAMED_BLOCKER_REASON };
+}
+
+/**
  * Stop, and cancel everything that was waiting to run.
  *
  * Pending actions go first and unconditionally: they were planned against a page
  * that has since turned out to contain something the Copilot must not touch, and
  * an action that survives a checkpoint is the one bug this product cannot have.
+ *
+ * `cancelled` is how many of them there were, because the banner says so out loud —
+ * "I've stopped the 3 remaining fields." A run that stopped part-way knows its own
+ * count and passes it; a checkpoint the detector raised on a quiet page counts what
+ * it is about to throw away.
+ *
+ * Everything the banner needs is written to the session, not only broadcast. The
+ * user is about to leave the panel to do the step, and a banner that vanished while
+ * they were away would be the panel forgetting the one thing it stopped for.
  */
+export interface CheckpointOptions {
+  /** How many approved actions this cancelled. Counted from storage when absent. */
+  cancelled?: number;
+  /** The user pressed continue and the step was still there. Softens the wording. */
+  unfinished?: boolean;
+}
+
 export async function raiseCheckpoint(
   tabId: number,
-  reason: string,
-  fieldId?: string,
+  blocker: SensitiveFlag,
+  options: CheckpointOptions = {},
 ): Promise<void> {
+  const pending = options.cancelled ?? (await getSession(tabId)).pendingActions?.length ?? 0;
+
   await setSession(tabId, {
-    checkpointReason: reason,
+    checkpointReason: blocker.reason,
+    checkpointKind: blocker.kind,
+    checkpointCancelled: pending,
+    // A fresh checkpoint is not a resume that came back unfinished, whatever the
+    // last one was.
+    checkpointUnfinished: options.unfinished ?? false,
     pendingActions: [],
     pendingPlan: undefined,
   });
@@ -120,9 +152,14 @@ export async function raiseCheckpoint(
 
   await setState(tabId, "CHECKPOINT");
 
-  const message: CheckpointDetectedMessage = fieldId
-    ? { type: "CHECKPOINT_DETECTED", reason, fieldId }
-    : { type: "CHECKPOINT_DETECTED", reason };
+  const message: CheckpointDetectedMessage = blocker.fieldId
+    ? {
+        type: "CHECKPOINT_DETECTED",
+        reason: blocker.reason,
+        kind: blocker.kind,
+        fieldId: blocker.fieldId,
+      }
+    : { type: "CHECKPOINT_DETECTED", reason: blocker.reason, kind: blocker.kind };
 
   await broadcast(message);
 }

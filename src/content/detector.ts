@@ -2,7 +2,13 @@ import type { FieldId } from "@/shared/actions";
 import type { CheckpointSummary, SensitiveFlag, SensitiveKind } from "@/shared/page";
 import { isBlockingKind } from "@/shared/page";
 import { walkElements } from "@/content/dom";
-import { fieldTypeOf, inputType, isButtonLike, owningForm } from "@/content/classify";
+import {
+  fieldTypeOf,
+  inputType,
+  isButtonLike,
+  isNavigationLink,
+  owningForm,
+} from "@/content/classify";
 import { FIELD_ID_ATTRIBUTE } from "@/content/registry";
 import {
   CAPTCHA_HOSTS,
@@ -92,12 +98,28 @@ export function flag(kind: SensitiveKind, fieldId?: FieldId): SensitiveFlag {
  * Copilot permanently paused and useless, while treating a payment page as
  * ordinary work is exactly the mistake this product exists not to make.
  */
-export function summarise(flags: readonly SensitiveFlag[]): CheckpointSummary {
+export function summarise(
+  flags: readonly SensitiveFlag[],
+  /**
+   * Ids whose flag describes something the page is not gated *by*.
+   *
+   * Links, in practice. A portal's navigation carries "Make a payment" on every
+   * page including the landing page, and letting that raise `CHECKPOINT` would
+   * stop the Copilot dead on a page with no payment on it — the same mistake E2
+   * refused to make for password fields, for the same reason. The flag is still
+   * recorded and the link is still marked sensitive; it simply is not a gate.
+   */
+  nonBlocking: ReadonlySet<FieldId> = new Set(),
+): CheckpointSummary {
   const kinds = [...new Set(flags.map((entry) => entry.kind))];
+
+  const gates = flags.filter(
+    (entry) => entry.fieldId === undefined || !nonBlocking.has(entry.fieldId),
+  );
 
   return {
     present: flags.length > 0,
-    blocking: kinds.some(isBlockingKind),
+    blocking: gates.some((entry) => isBlockingKind(entry.kind)),
     kinds,
   };
 }
@@ -105,8 +127,36 @@ export function summarise(flags: readonly SensitiveFlag[]): CheckpointSummary {
 function kindOf(element: Element, label?: string): SensitiveKind | undefined {
   if (element.tagName === "IFRAME") return frameKind(element);
   if (isButtonLike(element)) return buttonKind(element);
+  if (isNavigationLink(element)) return linkKind(element);
   if (fieldTypeOf(element)) return fieldKind(element, label);
   return undefined;
+}
+
+/**
+ * A link is judged by its words and by where it goes.
+ *
+ * The same text rules as a button, because "Proceed to payment" is the same
+ * instruction whether a portal built it as a `<button>` or an `<a>`, and a link
+ * straight out to Remita is the clearest payment signal there is.
+ *
+ * Flagging one does **not** stop the page — see `summarise`. It marks the link as
+ * something the Copilot will not send anyone through on its own, which is a claim
+ * about that one link and not about the form around it.
+ */
+function linkKind(element: Element): SensitiveKind | undefined {
+  const byText = matchText(
+    haystack(element.getAttribute("aria-label"), element.textContent),
+    SENSITIVE_BUTTON_PATTERNS,
+  );
+  if (byText) return byText;
+
+  const href = element.getAttribute("href");
+  if (!href) return undefined;
+
+  const absolute = absoluteUrl(href, element);
+  if (!absolute) return undefined;
+
+  return matchHost(absolute, PAYMENT_HOSTS) ? "payment" : undefined;
 }
 
 /**

@@ -149,6 +149,36 @@ export function highlightField(
   return true;
 }
 
+/**
+ * Draw on a field and bring it into view.
+ *
+ * "Show me" in the results summary. The scroll is the request, so it happens even
+ * when the field is already partly visible — `nearest` keeps a field that is fully
+ * on screen from jumping — and it is instant under `prefers-reduced-motion`, where
+ * a smooth scroll is exactly the motion that setting exists to refuse.
+ *
+ * Reading the media query here rather than caching it: the user can change the
+ * setting while a page is open, and this runs once per click.
+ */
+export function revealField(
+  fieldId: FieldId,
+  state: HighlightState = "needs-input",
+): boolean {
+  const element = lookup(fieldId);
+  if (!element) return false;
+
+  highlight(element, state);
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  element.scrollIntoView({
+    behavior: reduced ? "auto" : "smooth",
+    block: "center",
+    inline: "nearest",
+  });
+
+  return true;
+}
+
 export function clearHighlights(): void {
   for (const { box } of boxes) box.remove();
   boxes = [];

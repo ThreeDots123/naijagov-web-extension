@@ -1,7 +1,7 @@
 import type { Message, MessageType, Response } from "@/shared/messages";
 import { isMessage, messageError } from "@/shared/messages";
 import { ROW_HIGHLIGHT } from "@/shared/overlay";
-import { clearHighlights, highlightField, mountOverlay } from "@/content/overlay";
+import { clearHighlights, highlightField, mountOverlay, revealField } from "@/content/overlay";
 import { readPage, startObserving } from "@/content/observer";
 import { runActions } from "@/content/runner";
 
@@ -108,7 +108,12 @@ async function handleMessage(message: HandledMessage): Promise<Response<HandledM
         return { type: "FIELD_HIGHLIGHTED", drawn: false };
       }
 
-      const drawn = highlightField(message.fieldId, message.state ?? ROW_HIGHLIGHT);
+      // `reveal` is "Show me" rather than a hover: the user asked for the page to
+      // move, so it moves. A hover never scrolls anything.
+      const state = message.state ?? ROW_HIGHLIGHT;
+      const drawn = message.reveal
+        ? revealField(message.fieldId, state)
+        : highlightField(message.fieldId, state);
 
       return { type: "FIELD_HIGHLIGHTED", drawn };
     }

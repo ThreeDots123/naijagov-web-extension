@@ -196,3 +196,35 @@ export function ExternalLink({ size, className }: IconProps) {
     </svg>
   );
 }
+
+/** An open palm. The checkpoint banner's glyph: stop, a person is needed here. */
+export function Hand({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12" />
+      <path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12" />
+      <path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V13" />
+      <path d="M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.4-4.2a1.5 1.5 0 0 1 2.6-1.5L8 14.5" />
+    </svg>
+  );
+}
+
+/** A circular arrow. `Try again` on a row the page refused. */
+export function Rotate({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <path d="M20 11a8 8 0 1 0-1.3 5.5" />
+      <path d="M20 5v6h-6" />
+    </svg>
+  );
+}
+
+/** A target. `Show me` — point at the field on the page. */
+export function Target({ size, className }: IconProps) {
+  return (
+    <svg {...strokeProps(size, className)}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}

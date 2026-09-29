@@ -1,4 +1,5 @@
 import { sendToRuntime } from "@/shared/messages";
+import { UNNAMED_BLOCKER_REASON, pickBlocker } from "@/shared/page";
 import type { SerializeResult } from "@/content/serializer";
 import { serializePage } from "@/content/serializer";
 import { resetRegistry } from "@/content/registry";
@@ -91,13 +92,13 @@ function reportIfChanged(): void {
   // section of a page that is otherwise identical is exactly the case where the
   // hash does not move and the user must still be stopped.
   if (snapshot.checkpoint.blocking && !lastBlocking) {
-    const reason = snapshot.sensitiveFlags.find((entry) => entry.kind === "captcha")
-      ?? snapshot.sensitiveFlags.find((entry) => entry.kind === "payment");
+    const blocker = pickBlocker(snapshot);
 
     void send({
       type: "CHECKPOINT_DETECTED",
-      reason: reason?.reason ?? "This page needs you to take over.",
-      ...(reason?.fieldId === undefined ? {} : { fieldId: reason.fieldId }),
+      reason: blocker?.reason ?? UNNAMED_BLOCKER_REASON,
+      kind: blocker?.kind ?? "unknown",
+      ...(blocker?.fieldId === undefined ? {} : { fieldId: blocker.fieldId }),
     });
   }
 

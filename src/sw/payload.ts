@@ -1,4 +1,5 @@
 import type { PageSnapshot, SerializedField } from "@/shared/page";
+import type { RunReport } from "@/shared/results";
 
 /**
  * Our snapshot, as the backend's request bodies.
@@ -20,6 +21,13 @@ import type { PageSnapshot, SerializedField } from "@/shared/page";
  *  - **`sensitive_flags[].reason` carries our `kind`, not our sentence.** Their field
  *    is documented as a short category — "password", "otp" — and it is read as one.
  *    Our human-readable reason is for the panel and stays in the browser.
+ *  - **Links are sent inside `buttons`.** Their request models are `extra="forbid"`,
+ *    so a `links` key of our own is a 400 on every request until naijagov-api
+ *    declares one. Folding is what lets a landing page — all links, no form — reach
+ *    the model at all today, and from the model's side the claim is honest enough:
+ *    these are the things on the page you can click. Locally they stay a separate
+ *    collection, which is what keeps the validator able to refuse a click on one.
+ *    When the backend ships a real `links` field, this fold is the thing to delete.
  *
  * Nothing here can carry a field's contents: `SerializedField` has no slot for one,
  * which is the property `shared/page.ts` exists to guarantee. Their `PageField` has
@@ -33,6 +41,16 @@ const MAX_TITLE = 300;
 const MAX_URL = 2048;
 const MAX_HEADINGS = 20;
 const MAX_OPTIONS = 200;
+const MAX_FIELDS = 300;
+/**
+ * Their `buttons` and `sensitive_flags` caps are refusals, not truncations.
+ *
+ * `max_length` on a Pydantic list rejects the whole request. Our own caps are 100
+ * buttons and 40 links, which fold into one list that can be 140 long — so the fold
+ * has to do the cutting, or a link-heavy page 400s every request made from it.
+ */
+const MAX_BUTTONS = 100;
+const MAX_SENSITIVE_FLAGS = 300;
 
 export interface WireField {
   field_id: string;
@@ -97,34 +115,88 @@ function toWireField(field: SerializedField): WireField {
 }
 
 /**
- * The flags that name a field.
+ * The flags that name something we actually sent.
  *
- * A page-level flag has no `fieldId` and their schema requires a non-empty one, so
- * those are dropped. Nothing is lost that matters to them: a page-level blocker is a
- * CAPTCHA or a payment frame, which raises `CHECKPOINT` here and stops the turn
- * before a request is made at all.
+ * Three narrowings, all forced by their schema:
+ *
+ *  - A page-level flag has no `fieldId` and theirs requires a non-empty one, so
+ *    those are dropped. Nothing is lost that matters to them: a page-level blocker
+ *    is a CAPTCHA or a payment frame, which raises `CHECKPOINT` here and stops the
+ *    turn before a request is made at all.
+ *  - A flag naming something the caps cut is dropped too. A flag pointing at an id
+ *    that appears nowhere in the body is a dangling reference, and the reader would
+ *    have to either ignore it or trust it — neither is a thing to ask of them.
+ *  - The list is cut to their cap, which like `buttons` is a refusal rather than a
+ *    truncation. Kept in order, so the fields' own flags survive ahead of a
+ *    navigation link's.
  */
-function toWireFlags(snapshot: PageSnapshot): WireSensitiveFlag[] {
+function toWireFlags(snapshot: PageSnapshot, sent: ReadonlySet<string>): WireSensitiveFlag[] {
   const flags: WireSensitiveFlag[] = [];
 
   for (const flag of snapshot.sensitiveFlags) {
-    if (!flag.fieldId) continue;
+    if (flags.length >= MAX_SENSITIVE_FLAGS) break;
+    if (!flag.fieldId || !sent.has(flag.fieldId)) continue;
+
     flags.push({ field_id: flag.fieldId, reason: flag.kind });
   }
 
   return flags;
 }
 
-function toWireSnapshot(snapshot: PageSnapshot): WireSnapshot {
-  return {
-    headings: snapshot.headings.slice(0, MAX_HEADINGS).map((heading) => clip(heading, MAX_HEADING)),
-    fields: snapshot.fields.map(toWireField),
-    buttons: snapshot.buttons.map((button) => ({
+/**
+ * Buttons, then links, as one list of clickable things.
+ *
+ * Buttons first and links after, in each collection's own document order, so the
+ * form's own controls are what the model reads before a page's navigation. The ids
+ * are ours either way, so an action that comes back naming a link is recognisable
+ * as one on this side.
+ */
+function toWireButtons(snapshot: PageSnapshot): WireButton[] {
+  const buttons: WireButton[] = [];
+
+  for (const button of snapshot.buttons) {
+    if (buttons.length >= MAX_BUTTONS) break;
+
+    buttons.push({
       field_id: button.fieldId,
       text: clip(button.text, MAX_LABEL),
       sensitive: button.sensitive,
-    })),
-    sensitive_flags: toWireFlags(snapshot),
+    });
+  }
+
+  // Links fill whatever room the form's own controls left. A page with a hundred
+  // buttons is a form, and on a form the navigation is the part worth losing.
+  //
+  // `?? []` for the same reason as `pickBlocker`: a tab that has not reloaded since
+  // the extension updated is still running the content script that had no links.
+  for (const link of snapshot.links ?? []) {
+    if (buttons.length >= MAX_BUTTONS) break;
+
+    buttons.push({
+      field_id: link.fieldId,
+      text: clip(link.text, MAX_LABEL),
+      sensitive: link.sensitive,
+    });
+  }
+
+  return buttons;
+}
+
+function toWireSnapshot(snapshot: PageSnapshot): WireSnapshot {
+  const fields = snapshot.fields.slice(0, MAX_FIELDS).map(toWireField);
+  const buttons = toWireButtons(snapshot);
+
+  // Only ids that survived the caps above, so no flag dangles.
+  const sent = new Set<string>([
+    ...fields.map((field) => field.field_id),
+    ...buttons.map((button) => button.field_id),
+  ]);
+
+  return {
+    headings: snapshot.headings.slice(0, MAX_HEADINGS).map((heading) => clip(heading, MAX_HEADING)),
+    fields,
+    buttons,
+    sensitive_flags: toWireFlags(snapshot, sent),
   };
 }
 
@@ -176,5 +248,81 @@ export function toPlanRequest(input: PlanRequestInput): WirePlanRequest {
     message,
     ...(clientPlanId === undefined ? {} : { client_plan_id: clientPlanId }),
     ...toWireSnapshot(snapshot),
+  };
+}
+
+/**
+ * `POST /results`' body.
+ *
+ * Four keys per row and none of them can hold what a citizen typed — their
+ * `ResultEntry` has a tripwire that refuses a `value` or a `label` key outright, and
+ * `ActionResult` has nowhere to put one. The two checks agree, which is the point.
+ *
+ * Two narrowings are forced by their schema rather than chosen:
+ *
+ *  - **`field_id` is required there and optional here.** Only a `pause` has no field,
+ *    and a pause is a message rather than something that happened to an element, so
+ *    those rows are dropped instead of being sent with an invented id.
+ *  - **`reason` is required for every status but `ok`.** A row that lost its reason
+ *    somewhere would 400 the whole report, so it is sent as `UNKNOWN_FIELD` — the
+ *    honest code for "something happened to this and we cannot say what" — rather
+ *    than costing the other twenty-nine rows their record.
+ */
+export interface WireResultEntry {
+  action_id: string;
+  field_id: string;
+  status: string;
+  reason?: string;
+}
+
+export interface WireResultsRequest {
+  session_id: string;
+  plan_id: string;
+  results: WireResultEntry[];
+  checkpoint?: { reason: string; after_index: number };
+  aborted?: string;
+  elapsed_ms: number;
+}
+
+export interface ResultsRequestInput {
+  sessionId: string;
+  planId: string;
+  report: RunReport;
+}
+
+export function toResultsRequest(input: ResultsRequestInput): WireResultsRequest {
+  const { sessionId, planId, report } = input;
+
+  const results: WireResultEntry[] = [];
+
+  for (const result of report.results) {
+    if (result.fieldId === undefined) continue;
+
+    results.push({
+      action_id: result.actionId,
+      field_id: result.fieldId,
+      status: result.status,
+      ...(result.status === "ok"
+        ? {}
+        : { reason: result.reason ?? "UNKNOWN_FIELD" }),
+    });
+  }
+
+  return {
+    session_id: sessionId,
+    plan_id: planId,
+    results,
+    ...(report.checkpoint
+      ? {
+          checkpoint: {
+            reason: report.checkpoint.kind,
+            after_index: report.checkpoint.afterIndex,
+          },
+        }
+      : {}),
+    ...(report.aborted === undefined ? {} : { aborted: report.aborted }),
+    // Their cap is ten minutes and ours is a ten-second batch, so this only guards
+    // against a clock that jumped mid-run.
+    elapsed_ms: Math.max(0, Math.round(report.elapsedMs)),
   };
 }

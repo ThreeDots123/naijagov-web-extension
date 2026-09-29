@@ -4,9 +4,10 @@ import type {
   SerializedButton,
   SerializedField,
   SerializedFrame,
+  SerializedLink,
 } from "@/shared/page";
 import { hashPage } from "@/shared/page-hash";
-import { urlWithoutQuery } from "@/content/dom";
+import { cleanText, urlWithoutQuery } from "@/content/dom";
 import { buttonText } from "@/content/classify";
 import type { FieldCandidate } from "@/content/collect";
 import { collectCandidates } from "@/content/collect";
@@ -46,6 +47,16 @@ export { hashPage } from "@/shared/page-hash";
 export const MAX_FIELDS = 300;
 export const MAX_BUTTONS = 100;
 
+/**
+ * Links are capped far lower than buttons, and are deduplicated first.
+ *
+ * A portal's chrome — the masthead, the footer, a breadcrumb, a language switcher —
+ * is mostly links, and sending two hundred of them would bury the one that says
+ * "Renew Licence" in noise the model has to read past. Forty, in document order, is
+ * generous for the navigation that actually sits above the fold.
+ */
+export const MAX_LINKS = 40;
+
 export interface SerializeResult {
   snapshot: PageSnapshot;
   registry: FieldRegistry;
@@ -56,8 +67,11 @@ export function serializePage(root: Document | Element = document): SerializeRes
 
   const fieldPicks = capFields(candidates.fields);
   const buttonPicks = candidates.buttons.slice(0, MAX_BUTTONS);
+  const linkPicks = capLinks(candidates.links);
   const truncated =
-    fieldPicks.length < candidates.fields.length || buttonPicks.length < candidates.buttons.length;
+    fieldPicks.length < candidates.fields.length ||
+    buttonPicks.length < candidates.buttons.length ||
+    linkPicks.length < candidates.links.length;
 
   // Everything above was a read. From here on ids are minted and stamped, which
   // is the one mutation the Copilot makes to a page it has not been asked to fill.
@@ -67,12 +81,14 @@ export function serializePage(root: Document | Element = document): SerializeRes
   startGeneration([
     ...fieldPicks.map((candidate) => candidate.element),
     ...buttonPicks,
+    ...linkPicks,
     ...candidates.frames,
   ]);
 
   const flags: SensitiveFlag[] = [];
   const fields = fieldPicks.map((candidate) => toField(candidate, flags));
   const buttons = buttonPicks.map((element) => toButton(element, flags));
+  const links = linkPicks.map((element) => toLink(element, flags));
   const frames = candidates.frames.map((element) => toFrame(element, flags));
 
   clearStaleStamps(root);
@@ -81,13 +97,17 @@ export function serializePage(root: Document | Element = document): SerializeRes
   const withoutHash = {
     url: urlWithoutQuery(document_?.location?.href ?? ""),
     title: document_?.title ?? "",
-    generation: currentGenerationOf(fields, buttons, frames),
+    generation: currentGenerationOf(fields, buttons, links, frames),
     headings: candidates.headings,
     fields,
     buttons,
+    links,
     frames,
     sensitiveFlags: flags,
-    checkpoint: summarise(flags),
+    // A flagged link never gates the page. See `summarise` — a "Make a payment"
+    // item in a portal's navigation is on every page including the ones with no
+    // payment on them.
+    checkpoint: summarise(flags, new Set(links.map((link) => link.fieldId))),
     counts: {
       fields: candidates.fields.length,
       buttons: candidates.buttons.length,
@@ -145,6 +165,72 @@ function toField(candidate: FieldCandidate, flags: SensitiveFlag[]): SerializedF
   };
 }
 
+/**
+ * The links worth sending, in document order.
+ *
+ * Deduplicated before the cap, not after, because a portal's masthead and its
+ * footer carry the same six items and two identical rows help nobody. A link with
+ * no text is dropped outright: the text is the only part of a link the Copilot can
+ * put in a sentence, and one without it cannot be named to anybody.
+ */
+function capLinks(elements: readonly Element[]): Element[] {
+  const seen = new Set<string>();
+  const kept: Element[] = [];
+
+  for (const element of elements) {
+    if (kept.length >= MAX_LINKS) break;
+
+    const text = cleanText(buttonText(element));
+    if (!text) continue;
+
+    const key = `${text.toLowerCase()}\u001f${linkHref(element)}`;
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    kept.push(element);
+  }
+
+  return kept;
+}
+
+/**
+ * Where a link goes, when that is something we can say.
+ *
+ * Empty for anything that is not plain http(s): a bare `#`, a `javascript:`
+ * handler, a `mailto:`. Those are still links a person clicks and they are still
+ * serialized — their text is the useful part — but describing their destination
+ * would mean inventing one.
+ */
+function linkHref(element: Element): string {
+  const raw = element.getAttribute("href")?.trim() ?? "";
+  if (!raw || raw.startsWith("#")) return "";
+
+  try {
+    const parsed = new URL(raw, element.ownerDocument?.baseURI);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "";
+  }
+}
+
+function toLink(element: Element, flags: SensitiveFlag[]): SerializedLink {
+  const fieldId = register(element);
+  const found = inspectElement(element);
+  if (found) flags.push({ ...found, fieldId });
+
+  const href = linkHref(element);
+
+  return {
+    fieldId,
+    text: buttonText(element),
+    href,
+    external: isCrossOrigin(href, element),
+    sensitive: found !== undefined,
+  };
+}
+
 function toButton(element: Element, flags: SensitiveFlag[]): SerializedButton {
   const fieldId = register(element);
   const found = inspectElement(element);
@@ -192,9 +278,13 @@ function isCrossOrigin(src: string, element: Element): boolean {
 function currentGenerationOf(
   fields: SerializedField[],
   buttons: SerializedButton[],
+  links: SerializedLink[],
   frames: SerializedFrame[],
 ): number {
-  const first = fields[0]?.fieldId ?? buttons[0]?.fieldId ?? frames[0]?.fieldId;
+  // Links are in the chain because a landing page has neither fields nor buttons,
+  // and they are the only stamped thing on it.
+  const first =
+    fields[0]?.fieldId ?? buttons[0]?.fieldId ?? links[0]?.fieldId ?? frames[0]?.fieldId;
   if (first === undefined) return currentGeneration();
 
   return generationOf(first) ?? currentGeneration();

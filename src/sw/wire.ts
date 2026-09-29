@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ACTION_TYPES } from "@/shared/actions";
 import type { PageContext, Plan } from "@/shared/plan";
+import type { RunOutcome } from "@/shared/results";
 
 /**
  * The backend's responses, parsed at the boundary.
@@ -223,5 +224,40 @@ export function parsePageContext(body: unknown): PageContext {
     ...(wire.confidence ? { confidence: wire.confidence } : {}),
     ...(wire.checkpoint ? { checkpoint: wire.checkpoint } : {}),
     rulesLoaded: wire.rules_loaded,
+  };
+}
+
+/**
+ * `POST /results`' response.
+ *
+ * Only two things are read from it, and they are the two the summary's footer is
+ * made of: the sentence, and whether this page was the workflow's last step. The
+ * rest — `acknowledged`, `recorded`, their recount of the totals — is their
+ * bookkeeping and the panel has no business rendering it. In particular the panel
+ * does **not** show their `run` counts in place of the page's own: the page is what
+ * actually happened, and a disagreement between the two is a bug to find, not a
+ * number to display.
+ */
+const resultsResponseSchema = z.object({
+  acknowledged: z.boolean().default(false),
+  recorded: z.number().int().default(0),
+  next_hint: z.object({ code: z.string(), message: z.string() }),
+  step: z
+    .object({
+      id: z.string(),
+      index: z.number().int(),
+      total: z.number().int(),
+      is_final: z.boolean(),
+    })
+    .nullish(),
+});
+
+/** The parts of a `/results` answer the summary's footer is built from. */
+export function parseRunHint(body: unknown): Pick<RunOutcome, "hint" | "finalStep"> {
+  const wire = resultsResponseSchema.parse(body);
+
+  return {
+    hint: wire.next_hint.message,
+    ...(wire.step ? { finalStep: wire.step.is_final } : {}),
   };
 }

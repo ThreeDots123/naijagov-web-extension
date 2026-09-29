@@ -1,5 +1,5 @@
 import type { Action } from "@/shared/actions";
-import type { ActionResult } from "@/shared/results";
+import type { SensitiveKind } from "@/shared/page";
 import { isChatEntryKey } from "@/shared/chat";
 
 /**
@@ -55,9 +55,28 @@ export interface SessionState {
    * detector fired would otherwise show a checkpoint it cannot explain.
    */
   checkpointReason?: string;
+  /**
+   * Which kind of step stopped us.
+   *
+   * The sentence above is what the user reads; this is what the panel branches on —
+   * the glyph, and the softer wording when a resume finds the step still unfinished.
+   * Both are stored because the sentence is chosen from `SENSITIVE_REASONS` by kind
+   * and a panel opened after the fact has no other way back to it.
+   */
+  checkpointKind?: SensitiveKind;
+  /** How many approved actions the checkpoint cancelled. A count, never contents. */
+  checkpointCancelled?: number;
+  /**
+   * The user pressed continue and the step was still there.
+   *
+   * Only changes the banner's wording. There is no counter and no escalation: a
+   * person mid-way through reading an SMS is not doing anything wrong.
+   */
+  checkpointUnfinished?: boolean;
   /** Planned but unconfirmed. Cleared, never kept, when a checkpoint fires. */
   pendingActions?: Action[];
-  lastResults?: ActionResult[];
+  /** The batch that was dispatched, for `/results` and for a single-row retry. */
+  lastRun?: LastRunRef;
   /**
    * What `POST /context` established about this page, and which of our own reads it
    * belongs to.
@@ -87,6 +106,27 @@ export interface PageContextRef {
    */
   localPageHash: string;
   supported: boolean;
+}
+
+/**
+ * The batch that went to the page, kept until the next one replaces it.
+ *
+ * `pendingActions` is cleared *before* a run starts, so a worker killed mid-run
+ * cannot wake up and replay a plan. This is the other half of that: a record of what
+ * was dispatched, which `/results` needs a `planId` for and which "Try again" needs
+ * in order to resend the row exactly as the user approved it — including a value
+ * they corrected in the preview, which exists nowhere else.
+ *
+ * It is not a replay hazard the way `pendingActions` was. Nothing runs from here on
+ * its own; a retry is a button press, and the validator re-checks the action against
+ * the live page and registry before it writes, so a page that has moved refuses it.
+ */
+export interface LastRunRef {
+  /** The backend's plan id, so `/results` can be matched to what was proposed. */
+  planId: string;
+  /** The transcript turn holding the preview, so the summary lands on it. */
+  turnId: string;
+  actions: Action[];
 }
 
 export interface PendingPlanRef {

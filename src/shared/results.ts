@@ -140,3 +140,34 @@ export function countStatuses(results: readonly ActionResult[]): RunTotals {
   for (const result of results) totals[result.status] += 1;
   return totals;
 }
+
+/**
+ * A finished run, as the panel renders it.
+ *
+ * The report is what the page reported. `hint` and `finalStep` are what the backend
+ * said to do next, and both are optional because `/results` is allowed to fail: an
+ * offline backend costs the footer its sentence, not the summary.
+ *
+ * Stored on the turn that carried the plan, which is also where the field *labels*
+ * live. That split is deliberate and is the reason a results summary can name
+ * "Reference number" while nothing in `ActionResult` carries a label: the label was
+ * already in the browser, in the plan the user approved, and it never has to travel
+ * back from the page or out to the backend to be printed.
+ */
+export interface RunOutcome {
+  report: RunReport;
+  /** The backend's next-step sentence, printed verbatim. */
+  hint?: string;
+  /** True when the backend says this page is the workflow's last step. */
+  finalStep?: boolean;
+}
+
+/** Did anything at all reach the page? Decides the summary's header wording. */
+export function anySucceeded(totals: RunTotals): boolean {
+  return totals.ok > 0 || totals.changed > 0;
+}
+
+/** The rows that need the user: refused before the write, or refused by the page. */
+export function needsUser(result: ActionResult): boolean {
+  return result.status === "failed" || result.status === "rejected";
+}

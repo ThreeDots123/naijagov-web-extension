@@ -57,7 +57,13 @@ export async function approvePlan(
 
   const { actions } = buildActions(plan, rows);
 
-  await setSession(tabId, { pendingActions: actions, pendingPlan: undefined });
+  await setSession(tabId, {
+    pendingActions: actions,
+    pendingPlan: undefined,
+    // Kept past the run, unlike `pendingActions`, because `/results` needs the plan
+    // id and `Try again` needs the action exactly as the user approved it.
+    lastRun: { planId: plan.planId, turnId: approvedTurnId, actions },
+  });
   await patchTurn(tabId, approvedTurnId, {
     status: "approved",
     approvedCount: actions.length,

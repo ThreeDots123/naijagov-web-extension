@@ -1,4 +1,5 @@
 import type { Plan, PlanErrorCode } from "@/shared/plan";
+import type { RunOutcome } from "@/shared/results";
 
 /**
  * The transcript.
@@ -49,6 +50,15 @@ export interface CopilotTurn {
    * `PLAN_APPROVE` — there is no second copy to disagree with what is on screen.
    */
   approvedCount?: number;
+  /**
+   * What the run actually did, once it is over.
+   *
+   * Written onto the turn rather than held in the panel, because the user will leave
+   * the panel to look at the form and the summary has to be there when they come
+   * back. It also puts the results next to the plan they came from, which is the
+   * only place the field labels exist.
+   */
+  run?: RunOutcome;
 }
 
 /**
@@ -63,7 +73,15 @@ export interface CopilotTurn {
 export interface SystemTurn {
   id: string;
   role: "system";
-  code: PlanErrorCode;
+  /**
+   * Absent when the note is not a failure.
+   *
+   * Most system notes are the plumbing reporting that a turn did not happen, and
+   * they carry the backend's code. A few are quiet bookkeeping — "Picking up from
+   * where we left off." — which is the same kind of line in the transcript and is
+   * not an error with a code to give.
+   */
+  code?: PlanErrorCode;
   /** The backend's sentence where there is one, ours where there isn't. */
   text: string;
   at: number;
