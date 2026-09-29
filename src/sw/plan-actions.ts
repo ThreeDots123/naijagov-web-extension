@@ -57,6 +57,7 @@ export interface BuiltActions {
  */
 function toAction(row: PlannedRow, edited: string | undefined): Action | string {
   const fieldId = row.fieldId;
+  const actionId = row.actionId;
 
   switch (row.type) {
     case "fill":
@@ -71,7 +72,7 @@ function toAction(row: PlannedRow, edited: string | undefined): Action | string 
 
       if (!source) return "we couldn't tell where that value came from";
 
-      return { type: row.type, fieldId, value, source };
+      return { actionId, type: row.type, fieldId, value, source };
     }
 
     case "check": {
@@ -80,7 +81,7 @@ function toAction(row: PlannedRow, edited: string | undefined): Action | string 
 
       const source = toValueSource(row.sourceRef) ?? { kind: "user" as const };
 
-      return { type: "check", fieldId, checked: row.checked, source };
+      return { actionId, type: "check", fieldId, checked: row.checked, source };
     }
 
     case "highlight":
@@ -89,11 +90,11 @@ function toAction(row: PlannedRow, edited: string | undefined): Action | string 
     case "clickSafe": {
       if (!fieldId) return "the plan gave no field for it";
 
-      return { type: row.type, fieldId };
+      return { actionId, type: row.type, fieldId };
     }
 
     case "pause":
-      return { type: "pause", reason: row.reason ?? "This one needs you." };
+      return { actionId, type: "pause", reason: row.reason ?? "This one needs you." };
   }
 }
 

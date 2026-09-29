@@ -7,13 +7,7 @@ import type {
   PongMessage,
   Response,
 } from "@/shared/messages";
-import {
-  assertNever,
-  broadcast,
-  messageError,
-  notImplemented,
-  sendToTab,
-} from "@/shared/messages";
+import { assertNever, broadcast, messageError, sendToTab } from "@/shared/messages";
 import type { HealthState } from "@/shared/state";
 import { ACCOUNT_KEYS, HEALTH_KEY } from "@/shared/state";
 import { getHealth, isHealthy } from "@/sw/api";
@@ -111,11 +105,12 @@ async function handleMessage(
     case "FIELD_HIGHLIGHT":
       return highlightOnPage(message);
 
-    // Declared, not built. The executor task replaces these two lines, not the
-    // contract.
-    case "EXECUTE_ACTIONS":
-    case "ACTION_RESULTS":
-      return notImplemented(message.type);
+    // One action finished on some page. Broadcast, so it arrives here as well as at
+    // the panel it was meant for; there is nothing for the worker to do with it. The
+    // authoritative record is the whole report, which comes back as the answer to
+    // EXECUTE_ACTIONS and is written to the session there.
+    case "ACTION_PROGRESS":
+      return;
 
     // Answers and broadcasts. They travel to the panel; they never arrive here.
     case "PONG":
@@ -129,6 +124,9 @@ async function handleMessage(
     case "PAGE_HASH":
     // Sent *by* the worker to a content script, never to it.
     case "PAGE_HASH_CHECK":
+    case "EXECUTE_ACTIONS":
+    // The answer to EXECUTE_ACTIONS, received by `sw/run.ts` as a reply.
+    case "ACTION_RESULTS":
       throw new Error(`${message.type} is not addressed to the service worker.`);
 
     default:

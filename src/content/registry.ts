@@ -30,18 +30,52 @@ const ID_PATTERN = /^g(\d+)-f(\d+)$/;
 let generation = 0;
 let counter = 0;
 /**
+ * What the previous read collected, in the order it registered them.
+ *
+ * Held strongly, and only until the next read replaces it. It is what lets a read
+ * recognise that nothing structural moved — see `startGeneration`.
+ */
+let lastElements: Element[] = [];
+/**
  * Weak on purpose: a portal that re-renders a long form drops hundreds of nodes,
  * and a registry holding them strongly would keep every one of them alive for as
  * long as the tab is open.
  */
 let entries = new Map<FieldId, WeakRef<Element>>();
 
-/** Begin a new read. Increments the generation and empties the registry. */
-export function startGeneration(): number {
-  generation += 1;
+/**
+ * Begin a read over these elements, in the order they will be registered.
+ *
+ * The generation moves only when the page does. A read that collects the *same
+ * elements in the same order* is a re-read of a page that did not structurally
+ * change — a validation message appeared, a class toggled — and it keeps the
+ * generation it had, which means it re-mints exactly the ids it minted last time.
+ *
+ * That is not an optimisation, it is the difference between the executor working
+ * and never working. The observer re-serializes on every mutation, and approval
+ * re-reads the page to check its hash; a generation that counted reads would be
+ * two or three ahead of the plan by the time the user pressed `Fill selected`, and
+ * every action in it would be rejected as stale. The generation exists to say "the
+ * page changed", so it is the page that has to move it.
+ */
+export function startGeneration(elements: readonly Element[] = []): number {
+  if (generation === 0 || !sameElements(elements)) {
+    generation += 1;
+    lastElements = [...elements];
+  }
+
   counter = 0;
+  // Rebuilt either way: on a re-read `register` walks the same elements in the
+  // same order and puts back the same ids, and rebuilding is what drops entries
+  // for elements that have since been collected by the garbage collector.
   entries = new Map();
   return generation;
+}
+
+/** Identity, in order. Not a hash — two different pages can share a hash; these are the nodes. */
+function sameElements(elements: readonly Element[]): boolean {
+  if (elements.length !== lastElements.length) return false;
+  return elements.every((element, index) => lastElements[index] === element);
 }
 
 export function currentGeneration(): number {
@@ -72,10 +106,22 @@ export function register(element: Element): FieldId {
  * validator reports it rather than trying another way to find the element.
  */
 export function lookup(id: FieldId): Element | undefined {
+  const element = peek(id);
+  return element?.isConnected ? element : undefined;
+}
+
+/**
+ * The element an id was minted for, attached or not.
+ *
+ * For the validator, and only for the validator: it has to tell "this id was never
+ * ours" from "this element has been torn out of the page since the plan was made",
+ * because those are two different things to tell the user. Nothing writes through
+ * this — `lookup` is still the only way to reach an element that is really there.
+ */
+export function peek(id: FieldId): Element | undefined {
   if (generationOf(id) !== generation) return undefined;
 
-  const element = entries.get(id)?.deref();
-  return element?.isConnected ? element : undefined;
+  return entries.get(id)?.deref();
 }
 
 /** The generation an id belongs to, or `undefined` if it is not one of ours. */
@@ -122,4 +168,5 @@ export function resetRegistry(): void {
   generation = 0;
   counter = 0;
   entries = new Map();
+  lastElements = [];
 }

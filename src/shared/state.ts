@@ -1,4 +1,5 @@
-import type { Action, ActionResult } from "@/shared/actions";
+import type { Action } from "@/shared/actions";
+import type { ActionResult } from "@/shared/results";
 import { isChatEntryKey } from "@/shared/chat";
 
 /**

@@ -61,7 +61,14 @@ export function serializePage(root: Document | Element = document): SerializeRes
 
   // Everything above was a read. From here on ids are minted and stamped, which
   // is the one mutation the Copilot makes to a page it has not been asked to fill.
-  startGeneration();
+  //
+  // The picks go in, in the order they are about to be registered, so the registry
+  // can tell a page that changed from a page that was merely read again.
+  startGeneration([
+    ...fieldPicks.map((candidate) => candidate.element),
+    ...buttonPicks,
+    ...candidates.frames,
+  ]);
 
   const flags: SensitiveFlag[] = [];
   const fields = fieldPicks.map((candidate) => toField(candidate, flags));

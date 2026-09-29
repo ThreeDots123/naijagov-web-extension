@@ -106,6 +106,8 @@ legend {
 input[type="text"],
 input[type="email"],
 input[type="tel"],
+input[type="url"],
+input[type="number"],
 input[type="date"],
 input[type="password"],
 input[type="file"],
@@ -115,6 +117,15 @@ textarea {
   padding: 8px;
   font: inherit;
   color: inherit;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+/* The custom dropdown on awkward.html. Looks like a field, is not one. */
+.combobox {
+  padding: 8px;
+  color: var(--muted);
+  cursor: pointer;
   background: #fff;
   border: 1px solid var(--line);
 }

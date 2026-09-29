@@ -1,5 +1,10 @@
 import type { SensitiveKind } from "@/shared/page";
 
+// Re-exported so the detector keeps one import for "the rules and the words". The
+// sentences themselves live in `shared/page.ts`, because the service worker shows
+// them too and nothing outside `content/` may import from this directory.
+export { SENSITIVE_REASONS } from "@/shared/page";
+
 /**
  * The detector's rule data.
  *
@@ -96,17 +101,6 @@ export const SENSITIVE_BUTTON_PATTERNS: readonly TextRule[] = [
   { pattern: /\bverify\b/i, kind: "submit" },
   { pattern: /\bcomplete\s+registration\b/i, kind: "submit" },
 ];
-
-/** What the user is told. Says what they must do, never how to get around it. */
-export const SENSITIVE_REASONS: Record<SensitiveKind, string> = {
-  password: "Passwords are yours to type. The Copilot won't fill this.",
-  otp: "Only you can read this code, so only you can enter it.",
-  captcha: "This check has to be done by a person. Complete it yourself to carry on.",
-  payment: "Payments are handled by the provider. The Copilot stops here.",
-  submit: "Sending the form is your decision, so this button is yours to press.",
-  upload: "Choosing a file from your device is something only you can do.",
-  unknown: "The Copilot won't touch this one.",
-};
 
 /** Turn a name, id or label into a haystack the patterns above can read. */
 export function haystack(...parts: (string | null | undefined)[]): string {

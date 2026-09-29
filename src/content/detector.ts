@@ -53,6 +53,29 @@ export function detectSensitive(root: Document | Element = document): SensitiveF
   return flags;
 }
 
+/**
+ * The first thing on the page that stops the whole page, if there is one.
+ *
+ * Short-circuits, because this runs between every single action in a batch and a
+ * batch has a ten-second budget. It answers a narrower question than
+ * `detectSensitive`: not "what would the Copilot refuse to touch", which is most
+ * of a portal, but "has this page become one the Copilot must hand back" — a
+ * CAPTCHA or a payment, and nothing else. A password field appearing mid-run stops
+ * that *action*, through the validator, not the run.
+ */
+export function detectBlocking(root: Document | Element = document): SensitiveFlag | undefined {
+  const { elements } = walkElements(root);
+
+  for (const element of elements) {
+    const kind = kindOf(element);
+    if (kind && isBlockingKind(kind)) {
+      return flag(kind, element.getAttribute(FIELD_ID_ATTRIBUTE) ?? undefined);
+    }
+  }
+
+  return undefined;
+}
+
 export function flag(kind: SensitiveKind, fieldId?: FieldId): SensitiveFlag {
   return fieldId ? { fieldId, kind, reason: SENSITIVE_REASONS[kind] } : { kind, reason: SENSITIVE_REASONS[kind] };
 }

@@ -36,6 +36,23 @@ export function isBlockingKind(kind: SensitiveKind): boolean {
   return (BLOCKING_SENSITIVE_KINDS as readonly SensitiveKind[]).includes(kind);
 }
 
+/**
+ * What the user is told, per kind. Says what they must do, never how to get around it.
+ *
+ * Here rather than beside the detector's rules because both the content script and
+ * the service worker print these — a run that stops at a payment frame is raised as
+ * a checkpoint by the worker, and the worker may not import from `content/`.
+ */
+export const SENSITIVE_REASONS: Record<SensitiveKind, string> = {
+  password: "Passwords are yours to type. The Copilot won't fill this.",
+  otp: "Only you can read this code, so only you can enter it.",
+  captcha: "This check has to be done by a person. Complete it yourself to carry on.",
+  payment: "Payments are handled by the provider. The Copilot stops here.",
+  submit: "Sending the form is your decision, so this button is yours to press.",
+  upload: "Choosing a file from your device is something only you can do.",
+  unknown: "The Copilot won't touch this one.",
+};
+
 export interface SensitiveFlag {
   /** The element this is about. Absent when the flag is about the page as a whole. */
   fieldId?: FieldId;

@@ -18,10 +18,10 @@ export const HOST_MATCHES = [
   // matcher below has to do the same or the two disagree: the worker would
   // think a page was supported while Chrome had never injected anything into it.
   "http://localhost/*",
-  // PLACEHOLDER. Replaced with the real portal domain once the demo workflow is
-  // chosen. It resolves to nothing today, which is the point: no live portal is
-  // reachable until someone decides which one, on purpose.
-  "https://portal.example.gov.ng/*",
+
+  // The demo portal: the FRSC driver's-licence application. The first live host
+  // this extension reads and fills a form on.
+  "https://nigeriadriverslicence.frsc.gov.ng/*",
 ] as const;
 
 export type HostMatch = (typeof HOST_MATCHES)[number];
