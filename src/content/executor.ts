@@ -1,37 +1,126 @@
-import type { Action, ActionResult } from "@/shared/actions";
-import type { ValidationContext } from "@/content/validator";
+import type { Action, CheckAction, FillAction, SelectAction } from "@/shared/actions";
+import type { ActionStatus, ResultReason } from "@/shared/results";
+import type { Readback } from "@/content/readback";
+import { readBack, settle } from "@/content/readback";
+import type { Technique } from "@/content/writers";
+import { alreadySatisfied, bringIntoView, write } from "@/content/writers";
 
 /**
- * Runs cleared actions against the page.
+ * One action, from write to verdict.
  *
- * Not implemented yet. The signature is the contract.
+ * The validator has already cleared this element against the live page. What is
+ * left is the writing itself and the honesty about whether it worked: write, wait,
+ * read it back, and if it did not take, try the one other technique and read again.
  *
- * How a fill has to work when this is built:
- *
- *  1. Re-check the action with the validator and the detector. The page may have
- *     changed since it was planned.
- *  2. Write through the element's **native value setter**, so a React or Vue
- *     controlled input actually notices.
- *  3. Dispatch `input` and `change`, both with `bubbles: true`.
- *  4. Read the value back. A fill that does not read back is a `failed` fill,
- *     shown amber — not a success.
- *
- * Results carry field ids and statuses. Never a value, in a log or anywhere else.
+ * Nothing here throws. An element replaced by a re-render between the validator
+ * and the write makes the write a no-op or makes it raise, and both have to end in
+ * a result rather than in an exception that takes the other seven fields with it.
  */
 
-export function executeAction(action: Action, context: ValidationContext): Promise<ActionResult> {
-  throw new Error("executeAction is not implemented yet.");
+export interface Outcome {
+  status: ActionStatus;
+  reason?: ResultReason;
+}
+
+const SUCCESS: Outcome = { status: "ok" };
+
+type WriteAction = FillAction | SelectAction | CheckAction;
+
+export async function executeAction(action: Action, element: Element): Promise<Outcome> {
+  switch (action.type) {
+    // Nothing is written, so there is nothing to read back. Successful if the
+    // element is there, and the validator already established that it is.
+    case "scroll":
+    case "highlight":
+      bringIntoView(element);
+      return SUCCESS;
+
+    // The panel explains; the page is not touched.
+    case "explain":
+      return SUCCESS;
+
+    case "clickSafe":
+      return clickCleared(element);
+
+    case "fill":
+    case "select":
+    case "check":
+      return writeAndVerify(action, element);
+
+    // The runner handles a pause before it gets here — it is an instruction to the
+    // user, not an operation on an element.
+    case "pause":
+      return { status: "rejected", reason: "MALFORMED" };
+  }
 }
 
 /**
- * Run a batch one at a time, stopping the moment the detector fires.
+ * A button the detector has cleared.
  *
- * Sequential on purpose: each action is re-checked against the page as it is
- * *now*, and an earlier fill can change what a later field contains.
+ * There is no read-back for a click: what it did is whatever the page decided to
+ * do, which is exactly why the detector, not this function, decides whether it may
+ * happen at all. In the MVP "Continue" is still the user's own click — that is the
+ * plan's business, and by the time an action arrives here it has been through the
+ * guard, the user's approval and the validator.
  */
-export function executeActions(
-  actions: readonly Action[],
-  context: ValidationContext,
-): Promise<ActionResult[]> {
-  throw new Error("executeActions is not implemented yet.");
+function clickCleared(element: Element): Outcome {
+  try {
+    (element as HTMLElement).click();
+    return SUCCESS;
+  } catch {
+    return { status: "failed", reason: "NOT_ACCEPTED" };
+  }
+}
+
+async function writeAndVerify(action: WriteAction, element: Element): Promise<Outcome> {
+  // A checkbox that is already how the user wants it is left alone. Clicking it
+  // would turn it off, which is the one case where doing the work is the bug.
+  if (action.type === "check" && alreadySatisfied(element, action)) return SUCCESS;
+
+  bringIntoView(element);
+
+  const first = await attempt(action, element, "primary");
+  if (first !== "mismatch") return verdict(first);
+
+  // One retry, with a genuinely different technique. Not two, and not synthetic
+  // keystrokes after it: a page that has refused a value twice is telling us
+  // something, and the user is better served by being told than by us trying
+  // harder in ways that are increasingly unlike a person typing.
+  const second = await attempt(action, element, "alternate");
+  return verdict(second);
+}
+
+async function attempt(action: WriteAction, element: Element, technique: Technique): Promise<Readback> {
+  try {
+    write(element, action, technique);
+  } catch {
+    // The element was swapped out from under the write. Treated as a mismatch so
+    // the retry gets its turn, and as `NOT_ACCEPTED` if that fails too.
+    return "mismatch";
+  }
+
+  await settle();
+
+  // The re-render case again: an element detached between the write and here holds
+  // whatever it held, and reading it would be reading a node that is no longer part
+  // of the page the user is looking at.
+  if (!element.isConnected) return "mismatch";
+
+  return readBack(element, action);
+}
+
+/**
+ * `changed` carrying `NOT_ACCEPTED` is not a mistake.
+ *
+ * The backend requires a reason code on every status but `ok`, and the shared
+ * vocabulary has one code for "the page did not take the value as written". A
+ * reformatted value is that, softened by the status beside it — which is what the
+ * panel actually branches on. Adding a `REFORMATTED` code would be a two-repo
+ * change for a distinction the status already carries.
+ */
+function verdict(result: Readback): Outcome {
+  if (result === "ok") return SUCCESS;
+  if (result === "changed") return { status: "changed", reason: "NOT_ACCEPTED" };
+
+  return { status: "failed", reason: "NOT_ACCEPTED" };
 }

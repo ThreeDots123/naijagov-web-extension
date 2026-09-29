@@ -1,8 +1,9 @@
 import type { Message, MessageType, Response } from "@/shared/messages";
-import { isMessage, messageError, notImplemented } from "@/shared/messages";
+import { isMessage, messageError } from "@/shared/messages";
 import { ROW_HIGHLIGHT } from "@/shared/overlay";
 import { clearHighlights, highlightField, mountOverlay } from "@/content/overlay";
 import { readPage, startObserving } from "@/content/observer";
+import { runActions } from "@/content/runner";
 
 /**
  * The content script: the only code in this extension that touches a page.
@@ -112,9 +113,11 @@ async function handleMessage(message: HandledMessage): Promise<Response<HandledM
       return { type: "FIELD_HIGHLIGHTED", drawn };
     }
 
-    // Declared, not built. The executor task fills this in against the shape
-    // that already exists.
+    // The only path in this extension that changes a government form. Every
+    // action in it is re-checked against the live page immediately before it runs
+    // — the backend's guard and the user's approval both worked from a picture
+    // that is now a second old.
     case "EXECUTE_ACTIONS":
-      return notImplemented(message.type);
+      return { type: "ACTION_RESULTS", report: await runActions(message.actions) };
   }
 }

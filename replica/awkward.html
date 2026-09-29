@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Registration — Awkward fields</title>
+    <!--
+      A test fixture, not a replica of anything official, and not part of the
+      two-step demo flow. `index.html` is the page where everything works; this is
+      the page where things go wrong on purpose, so the executor can be shown
+      reporting honestly rather than only shown succeeding.
+
+      Eight ordinary fillable fields, so a batch can be timed against the ten
+      second budget, plus one of each thing the engine has to refuse or report:
+
+        - a stubborn input that reverts whatever is written into it
+        - an input that reformats what it is given (spaces stripped)
+        - an autocomplete input (role="combobox"), refused not driven
+        - a dropdown built from a div, which is never serialized in the first place
+        - a disabled field and a read-only field
+        - a select whose options are the only values it will ever hold
+
+      The script below is the portal's, conceptually — it is what a framework
+      doing its own value management looks like from the outside. No build step.
+    -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <p class="eyebrow">Example Services Portal</p>
+        <p class="tagline">A fictional service used for testing</p>
+      </div>
+    </header>
+
+    <main>
+      <h1>Register a business name</h1>
+      <p class="lede">Fields that behave badly</p>
+
+      <form action="./index.html" method="get">
+        <fieldset>
+          <legend>Ordinary fields</legend>
+
+          <div class="field">
+            <label for="trading-name">Trading name</label>
+            <input id="trading-name" name="trading_name" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="alt-name">Alternative name</label>
+            <input id="alt-name" name="alt_name" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="contact-email">Email address</label>
+            <input id="contact-email" name="contact_email" type="email" />
+          </div>
+
+          <div class="field">
+            <label for="website">Website</label>
+            <input id="website" name="website" type="url" />
+          </div>
+
+          <div class="field">
+            <label for="staff">Number of staff</label>
+            <input id="staff" name="staff" type="number" />
+          </div>
+
+          <div class="field">
+            <label for="opened">Date opened</label>
+            <input id="opened" name="opened" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="premises">Premises description</label>
+            <textarea id="premises" name="premises" rows="3"></textarea>
+          </div>
+
+          <div class="field">
+            <label for="sector">Sector</label>
+            <select id="sector" name="sector">
+              <option value="">Select one</option>
+              <option value="retail">Retail and wholesale trade</option>
+              <option value="agriculture">Agriculture</option>
+              <option value="services">Professional services</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Fields that argue back</legend>
+
+          <div class="field">
+            <label for="stubborn">Reference number</label>
+            <input id="stubborn" name="reference" type="text" />
+            <p class="hint">Reverts anything written into it. Must report as not accepted.</p>
+          </div>
+
+          <div class="field">
+            <label for="reformats">Phone number</label>
+            <input id="reformats" name="reformats" type="tel" />
+            <p class="hint">Strips spaces on input. Must report as accepted-but-changed.</p>
+          </div>
+
+          <div class="field">
+            <label for="lga">Local government area</label>
+            <input
+              id="lga"
+              name="lga"
+              type="text"
+              role="combobox"
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              aria-autocomplete="list"
+              autocomplete="off"
+            />
+            <p class="hint">
+              An autocomplete: a real input driving its own popup list. Serialized like any
+              text field, and refused at write time — must report as a manual field.
+            </p>
+          </div>
+
+          <div class="field">
+            <label id="ward-label">Ward</label>
+            <div
+              id="ward"
+              role="combobox"
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              aria-labelledby="ward-label"
+              tabindex="0"
+              class="combobox"
+            >
+              Choose a ward
+            </div>
+            <p class="hint">
+              A dropdown built out of a div. The serializer does not collect it at all, so
+              it never gets an id and no plan can ever address it. Here to prove that.
+            </p>
+          </div>
+
+          <div class="field">
+            <label for="issued">Certificate number</label>
+            <input id="issued" name="issued" type="text" readonly value="Issued after approval" />
+          </div>
+
+          <div class="field">
+            <label for="assessed">Assessed fee</label>
+            <input id="assessed" name="assessed" type="text" disabled />
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit">Continue</button>
+        </div>
+      </form>
+    </main>
+
+    <footer>
+      <p>Example Services Portal — a fictional service. No real application is made here.</p>
+    </footer>
+
+    <script>
+      // The portal's own value management, as far as the extension is concerned.
+      // A field that puts back what it had is exactly what a controlled component
+      // does when it decides a programmatic write did not come from a real edit.
+      (function () {
+        const stubborn = document.getElementById("stubborn");
+        stubborn.addEventListener("input", function () {
+          stubborn.value = "";
+        });
+
+        // And a field that keeps the value but rewrites it on its way in.
+        const reformats = document.getElementById("reformats");
+        reformats.addEventListener("input", function () {
+          const stripped = reformats.value.replace(/\s+/g, "");
+          if (stripped !== reformats.value) reformats.value = stripped;
+        });
+      })();
+    </script>
+  </body>
+</html>

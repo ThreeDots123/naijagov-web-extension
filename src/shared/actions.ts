@@ -13,10 +13,26 @@
  *     There is nowhere in this type to put one.
  *  2. Anything that writes a value carries a `ValueSource`. A value with no
  *     traceable origin is a value the model invented, and the validator drops it.
+ *
+ * What *came back* from a run lives in `results.ts`, not here. That separation is
+ * deliberate: this file carries values down to the page, and nothing in that file
+ * has anywhere to carry one back up.
  */
 
-/** An id minted by the serializer, e.g. "f12". Never a selector, never a name. */
+/** An id minted by the serializer, e.g. "g4-f12". Never a selector, never a name. */
 export type FieldId = string;
+
+/**
+ * What every action carries.
+ *
+ * `actionId` is the positional id the backend minted for the plan row this came
+ * from (`a1`, `a2`). It travels down to the page and back up in the result, which
+ * is how a result is matched to the row the user actually ticked — `fieldId` will
+ * not do, because one field can be both highlighted and filled in a single plan.
+ */
+export interface ActionBase {
+  actionId: string;
+}
 
 /**
  * Where a written value came from.
@@ -34,7 +50,7 @@ export type ValueSource =
   | { kind: "user" };
 
 /** Set a text-like input's value. */
-export interface FillAction {
+export interface FillAction extends ActionBase {
   type: "fill";
   fieldId: FieldId;
   value: string;
@@ -42,7 +58,7 @@ export interface FillAction {
 }
 
 /** Choose an option in a `<select>`. The value must exist among the real options. */
-export interface SelectAction {
+export interface SelectAction extends ActionBase {
   type: "select";
   fieldId: FieldId;
   value: string;
@@ -50,7 +66,7 @@ export interface SelectAction {
 }
 
 /** Tick or untick a checkbox. */
-export interface CheckAction {
+export interface CheckAction extends ActionBase {
   type: "check";
   fieldId: FieldId;
   checked: boolean;
@@ -58,19 +74,19 @@ export interface CheckAction {
 }
 
 /** Draw attention to an element. Touches nothing. */
-export interface HighlightAction {
+export interface HighlightAction extends ActionBase {
   type: "highlight";
   fieldId: FieldId;
 }
 
 /** Bring an element into view. Touches nothing. */
-export interface ScrollAction {
+export interface ScrollAction extends ActionBase {
   type: "scroll";
   fieldId: FieldId;
 }
 
 /** Ask the panel to explain an element. Touches nothing on the page. */
-export interface ExplainAction {
+export interface ExplainAction extends ActionBase {
   type: "explain";
   fieldId: FieldId;
 }
@@ -81,13 +97,13 @@ export interface ExplainAction {
  * Never a submit, pay, confirm, authorize or verify button. In the MVP even
  * "Continue" is the user's own click, because on some portals Continue submits.
  */
-export interface ClickSafeAction {
+export interface ClickSafeAction extends ActionBase {
   type: "clickSafe";
   fieldId: FieldId;
 }
 
 /** Stop and hand back to the user. `reason` is shown to them verbatim. */
-export interface PauseAction {
+export interface PauseAction extends ActionBase {
   type: "pause";
   reason: string;
 }
@@ -140,22 +156,8 @@ export function isWriteAction(action: Action): action is WriteAction {
   return action.type === "fill" || action.type === "select" || action.type === "check";
 }
 
-export type ActionStatus =
-  /** It ran and the read-back confirmed it. */
-  | "ok"
-  /** It ran and did not take — an amber result, not a success. */
-  | "failed"
-  /** The validator refused it. It never touched the page. */
-  | "rejected";
 
-export interface ActionResult {
-  action: Action;
-  status: ActionStatus;
-  /**
-   * Why it failed or was rejected, in words the user can act on.
-   *
-   * Never contains a field's value. Results that leave the browser carry ids and
-   * statuses only.
-   */
-  reason?: string;
+/** The element an action addresses, or nothing for a `pause`. */
+export function fieldIdOf(action: Action): FieldId | undefined {
+  return action.type === "pause" ? undefined : action.fieldId;
 }

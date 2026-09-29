@@ -1,4 +1,5 @@
-import type { Action, ActionResult, FieldId } from "@/shared/actions";
+import type { Action, FieldId } from "@/shared/actions";
+import type { ActionResult, RunReport } from "@/shared/results";
 import type { HighlightState } from "@/shared/overlay";
 import type { PageSnapshot } from "@/shared/page";
 import type { CopilotState, HealthState } from "@/shared/state";
@@ -7,9 +8,10 @@ import type { CopilotState, HealthState } from "@/shared/state";
  * Every message that crosses between the side panel, the service worker and the
  * content script. One discriminated union, one send helper, no ad-hoc objects.
  *
- * EXECUTE_ACTIONS and ACTION_RESULTS are still declared and answered with
- * `notImplemented`: the executor is the next fragment, and its contract already
- * exists here so that task adds a function body rather than inventing one.
+ * Nothing in this file carries a field's contents in either direction, with one
+ * deliberate exception: EXECUTE_ACTIONS, which carries the values the user
+ * approved *down* to the page they are going into. Everything coming back —
+ * results, progress — is ids and statuses.
  */
 
 /** panel → sw → content. "Is anyone home on this page?" */
@@ -41,10 +43,34 @@ export interface ExecuteActionsMessage {
   actions: Action[];
 }
 
-/** content → sw. Ids and statuses. No values. */
+/**
+ * content → sw, as the answer to EXECUTE_ACTIONS. Ids and statuses. No values.
+ *
+ * The whole report travels at once — per-action outcomes, the totals, how long it
+ * took, and why it stopped if it did. It is also the only complete record: the
+ * content script is about to be thrown away by a navigation, and the worker is
+ * where a run's history has to survive.
+ */
 export interface ActionResultsMessage {
   type: "ACTION_RESULTS";
-  results: ActionResult[];
+  report: RunReport;
+}
+
+/**
+ * content → whoever is listening. One action just finished.
+ *
+ * Broadcast rather than addressed, because its audience is the side panel and the
+ * content script cannot reach it directly. Nobody has to be listening: the run is
+ * not waiting on this and never blocks on a reply. The overlay is the primary
+ * feedback — the user is watching the form, not the panel — and this is the copy
+ * of that for anyone who is watching the panel instead.
+ */
+export interface ActionProgressMessage {
+  type: "ACTION_PROGRESS";
+  /** Zero-based position in the batch. */
+  index: number;
+  total: number;
+  result: ActionResult;
 }
 
 /** content → sw → panel. The detector fired. Everything pending is cancelled. */
@@ -219,6 +245,7 @@ export type Message =
   | PageSnapshotMessage
   | ExecuteActionsMessage
   | ActionResultsMessage
+  | ActionProgressMessage
   | CheckpointDetectedMessage
   | StateChangedMessage
   | HealthCheckMessage
@@ -245,6 +272,7 @@ export const MESSAGE_TYPES = [
   "PAGE_SNAPSHOT",
   "EXECUTE_ACTIONS",
   "ACTION_RESULTS",
+  "ACTION_PROGRESS",
   "CHECKPOINT_DETECTED",
   "STATE_CHANGED",
   "HEALTH_CHECK",
@@ -291,6 +319,7 @@ export interface ResponseFor {
   DISCONNECTED: void;
   PAGE_SNAPSHOT: void;
   ACTION_RESULTS: void;
+  ACTION_PROGRESS: void;
   CHECKPOINT_DETECTED: void;
   STATE_CHANGED: void;
   HEALTH_RESULT: void;
@@ -368,16 +397,6 @@ export async function broadcast(message: Message): Promise<void> {
 function unwrap<T>(response: unknown): T {
   if (isMessageError(response)) throw new Error(response.error);
   return response as T;
-}
-
-/**
- * The stand-in for a message that is declared but not yet built.
- *
- * It throws rather than returning a plausible empty value, so a half-wired flow
- * fails loudly in development instead of quietly doing nothing in a demo.
- */
-export function notImplemented(type: MessageType): never {
-  throw new Error(`${type} is declared but not implemented yet.`);
 }
 
 /**
