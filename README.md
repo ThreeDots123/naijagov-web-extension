@@ -27,6 +27,13 @@ Then load it:
 3. **Load unpacked**, and choose the `dist/` folder
 4. Click the toolbar icon — the side panel opens
 
+The panel will load and connect, but explaining, planning and filling need
+`naijagov-api` running at the host in `VITE_API_BASE` (`http://localhost:8787`
+by default) — that sibling repo is not part of this one. Connecting also needs
+a token, minted by signing in at `naijagov-web` (`VITE_WEB_BASE`,
+`http://localhost:3000` by default) and pasted into the connect card — or set
+`VITE_DEMO_TOKEN` in `.env` to skip that step in a local build.
+
 `npm run dev` is a watch build rather than a dev server. An extension loads from
 `dist/`, so there is nothing for a dev server to host; CRXJS pushes updates into
 the already-loaded extension as you edit.
@@ -110,11 +117,14 @@ validator are the defense, which is why neither is loosened for convenience.
 
 ## Where this task stopped
 
-The plumbing and the contracts, not the behaviour. `serializer.ts`, `detector.ts`,
-`validator.ts` and `executor.ts` exist with their real signatures and throw when
-called — each is its own task, and each fills in a function rather than inventing
-a shape. The connect flow, chat, the fill preview and the checkpoint banner are
-the same: declared, not built.
+The serializer, detector, validator and executor are built and read a live page:
+labels, sensitive fields, checkpoints, and the fill-and-read-back loop all work
+end to end against `replica/`. So do the connect flow, chat, the fill preview,
+the checkpoint banner and the results summary. See `context/current-feature.md`
+for the detailed history and what each task shipped.
+
+Still unbuilt: the explain card, the profile screen, and real token verification
+against `/me` (any non-empty string is currently accepted as connected).
 
 ---
 
