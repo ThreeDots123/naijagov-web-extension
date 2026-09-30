@@ -21,9 +21,12 @@ export interface ConnectCardProps {
   onConnect: (token: string) => void;
 }
 
+/** Set in `.env` for demo builds, so the field arrives filled and one click connects. */
+const DEMO_TOKEN = import.meta.env.VITE_DEMO_TOKEN ?? "";
+
 export function ConnectCard({ onOpenProfile, onConnect }: ConnectCardProps) {
-  const [pasting, setPasting] = useState(false);
-  const [token, setToken] = useState("");
+  const [pasting, setPasting] = useState(DEMO_TOKEN !== "");
+  const [token, setToken] = useState(DEMO_TOKEN);
   const inputId = useId();
 
   return (
@@ -65,6 +68,15 @@ export function ConnectCard({ onOpenProfile, onConnect }: ConnectCardProps) {
           }}
           className="mt-3"
         >
+          {DEMO_TOKEN !== "" ? (
+            <p
+              id={`${inputId}-demo`}
+              className="mb-2 rounded-md bg-green-50 px-3 py-2 text-[13px] leading-[1.5] text-green-900"
+            >
+              A demo token is already filled in below. Press <strong>Connect</strong> to continue.
+            </p>
+          ) : null}
+
           <label htmlFor={inputId} className="sr-only">
             Extension token
           </label>
@@ -78,6 +90,7 @@ export function ConnectCard({ onOpenProfile, onConnect }: ConnectCardProps) {
             autoComplete="off"
             spellCheck={false}
             autoCapitalize="off"
+            {...(DEMO_TOKEN !== "" ? { "aria-describedby": `${inputId}-demo` } : {})}
             placeholder="Paste your token"
             className="h-10 w-full rounded-md border border-rule bg-page px-3 text-[13px] text-ink placeholder:text-ink-faint focus-visible:border-green-900"
           />

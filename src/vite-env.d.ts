@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
   /** The naijagov-web base URL, for the link to the user's profile. */
   readonly VITE_WEB_BASE?: string;
+  /** Prefills the connect card's token field. Demo builds only; leave unset otherwise. */
+  readonly VITE_DEMO_TOKEN?: string;
 }
 
 interface ImportMeta {
