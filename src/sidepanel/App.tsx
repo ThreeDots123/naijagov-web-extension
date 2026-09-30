@@ -14,6 +14,7 @@ import { GreetingBubble } from "@/sidepanel/components/greeting-bubble";
 import { PanelHeader } from "@/sidepanel/components/panel-header";
 import { QuickPrompts } from "@/sidepanel/components/quick-prompts";
 import { StatusStrip } from "@/sidepanel/components/status-strip";
+import { TryQuestions } from "@/sidepanel/components/try-questions";
 import { useBackendHealth } from "@/sidepanel/hooks/use-backend-health";
 import {
   approvePlan,
@@ -248,6 +249,10 @@ export function App() {
           onContinue={() => void resume()}
           onCancel={() => void abandon()}
         />
+      ) : null}
+
+      {connected ? (
+        <TryQuestions disabled={busy} onPick={(question) => void resend(question)} />
       ) : null}
 
       <Composer
